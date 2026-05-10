@@ -9,13 +9,14 @@ Este repositorio contiene la web principal (marketing) y el portal de clientes (
 - Axios (API HTTP con interceptores y refresh de token)
 - CSS modular por secciones
 
-## CÃ³mo ejecutar
+## Cómo ejecutar
 
-1) Requisitos: Node.js 18+ y npm.
-2) Instalar dependencias: `npm install`
-3) Desarrollo: `npm run dev` (abre el sitio en http://localhost:5173)
-4) Build producciÃ³n: `npm run build`
-5) Preview local: `npm run preview`
+1) Requisitos: Node.js 18+ y pnpm 8+.
+2) Instalar dependencias desde la raíz del monorepo: `pnpm install`
+3) Desarrollo: `pnpm --filter koop dev` (abre el sitio en http://localhost:5173)
+4) Build producción: `pnpm --filter koop build`
+5) Preview local: `pnpm --filter koop preview`
+6) Lint: `pnpm --filter koop lint`
 
 Variable opcional:
 - `VITE_API_BASE`: URL base del backend. Si no se define (o es una ruta relativa), las peticiones usan `/api` y el proxy de Vite las reenviará al destino configurado.
@@ -82,7 +83,7 @@ Estilos del dashboard en `src/styles/dashboard.css`.
 
 ## Despliegue (GitHub Pages)
 
-- `npm run deploy` publica `dist/` en GitHub Pages (requiere permisos y configuraciÃ³n del repo remoto).
+- `pnpm --filter koop deploy` publica `dist/` en GitHub Pages (requiere permisos y configuración del repo remoto).
 
 ## GuÃ­a para â€œdummiesâ€: tareas comunes
 

@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+﻿import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../../../context/AuthContext.jsx';
+import { useAuth } from '../../../../context/AuthContext';
 
 export default function Logout() {
   const { logout } = useAuth();
@@ -14,8 +14,9 @@ export default function Logout() {
     })();
   }, [logout]);
 
-  // Redirige al inicio; Index mostrará el splash al no encontrar la marca de visita
+  // Redirige al inicio; Index mostrarÃ¡ el splash al no encontrar la marca de visita
   const from = location.state?.from?.pathname;
   return <Navigate to="/" replace state={{ from }} />;
 }
+
 

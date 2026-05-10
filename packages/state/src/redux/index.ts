@@ -6,3 +6,4 @@ export * from "./slices/counterSlice";
 export * from "./slices/userSlice";
 export * from "./slices/contactSlice";
 export * from "./slices/feedbackSlice";
+export * from "./slices/calendarSlice";

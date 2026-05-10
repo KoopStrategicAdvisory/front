@@ -34,11 +34,30 @@ export interface CounterState {
   value: number;
 }
 
+export interface CalendarEventAudience {
+  type: 'all' | 'clients';
+  clientIds?: string[];
+}
+
+export interface CalendarEvent {
+  id: string;
+  date: string;
+  note: string;
+  audience?: CalendarEventAudience;
+  createdAt?: string;
+  createdBy?: string;
+}
+
+export interface CalendarState {
+  events: CalendarEvent[];
+}
+
 export interface RootState {
   counter: CounterState;
   user: UserState;
   contact: ContactState;
   feedback: FeedbackState;
+  calendar: CalendarState;
 }
 
 export const createInitialContactFormData = (): ContactFormData => ({
@@ -68,4 +87,5 @@ export const createInitialRootState = (): RootState => ({
     submitted: false,
     error: null,
   },
+  calendar: { events: [] },
 });

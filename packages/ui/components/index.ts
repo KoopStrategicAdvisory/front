@@ -1,4 +1,5 @@
 export * from "./atoms/Button/button";
+export * from "./atoms/Notice/notice";
 export * from "./atoms/Input/input";
 export * from "./atoms/Label/label";
 export * from "./atoms/Rating/rating";

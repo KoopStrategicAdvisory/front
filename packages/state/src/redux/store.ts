@@ -3,6 +3,7 @@ import counterReducer from "./slices/counterSlice";
 import userReducer from "./slices/userSlice";
 import contactReducer from "./slices/contactSlice";
 import feedbackReducer from "./slices/feedbackSlice";
+import calendarReducer from "./slices/calendarSlice";
 
 export const reduxStore = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const reduxStore = configureStore({
     user: userReducer,
     contact: contactReducer,
     feedback: feedbackReducer,
+    calendar: calendarReducer,
   },
 });
 

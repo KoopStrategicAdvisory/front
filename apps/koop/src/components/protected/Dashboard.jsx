@@ -1,5 +1,5 @@
 ﻿import { useMemo } from "react";
-import { useAuth } from "../../context/AuthContext.jsx";
+import { useAuth } from "../../context/AuthContext";
 import AdminDashboard from "./dashboard/admin/AdminDashboard.jsx";
 import UserDashboard from "./dashboard/user/UserDashboard.jsx";
 import NoAccessDashboard from "./dashboard/NoAccess.jsx";
@@ -36,3 +36,4 @@ export default function Dashboard() {
 
   return <NoAccessDashboard />;
 }
+

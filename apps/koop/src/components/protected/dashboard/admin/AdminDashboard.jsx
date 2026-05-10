@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../../../../api/axios";
 import { listActiveClients } from "../../../../api/clients";
-import { useAuth } from "../../../../context/AuthContext.jsx";
+import { useAuth } from "../../../../context/AuthContext";
 import useCalendarEvents from "../../../../hooks/useCalendarEvents";
 import { normalizeUpperAscii } from "../../../../utils/strings.js";
 import "../../../../styles/dashboard.css";
@@ -719,6 +719,7 @@ export default function AdminDashboard() {
     </div>
   );
 }
+
 
 
 

@@ -16,6 +16,12 @@ Run the main app:
 pnpm --filter web dev
 ```
 
+Run the production app (koop):
+
+```sh
+pnpm --filter koop dev
+```
+
 Run the sample auth API:
 
 ```sh
@@ -38,7 +44,8 @@ pnpm build
 
 ### Apps
 
-- `apps/web`: main React + Vite application
+- `apps/koop`: production React + Vite application (KOOP Strategic Advisory website and client portal)
+- `apps/web`: reference React + Vite application demonstrating monorepo best practices
 - `apps/auth-api`: sample Express API for custom and mixed authentication flows
 - `apps/storybook`: isolated component showcase for `@repo/ui`
 

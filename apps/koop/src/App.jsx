@@ -34,8 +34,8 @@ import Logout from './pages/dinamic/auth/Logout/index.jsx';
 import SpotifyCallback from './pages/dinamic/SpotifyCallback/index.jsx';
 import Consultas from './pages/dinamic/Consultas/index.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
-import { AuthProvider } from './context/AuthContext';
-import { useAuth } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { KoopAuthProvider } from './auth/KoopAuthProvider';
 import api from './api/axios';
 import Navbar from './components/Navbar.jsx';
 import FontProvider from './theme/FontProvider.jsx';
@@ -202,13 +202,15 @@ function App() {
   };
 
   return (
-    <AuthProvider>
-      <FontProvider>
-        <BrowserRouter>
-          <Shell />
-        </BrowserRouter>
-      </FontProvider>
-    </AuthProvider>
+    <KoopAuthProvider>
+      <AuthProvider>
+        <FontProvider>
+          <BrowserRouter>
+            <Shell />
+          </BrowserRouter>
+        </FontProvider>
+      </AuthProvider>
+    </KoopAuthProvider>
   );
 }
 

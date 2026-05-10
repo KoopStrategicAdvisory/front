@@ -1,18 +1,24 @@
 {
-    "name": "pagina-principal-koop",
+    "name": "koop",
     "version": "0.0.0",
     "private": true,
+    "type": "module",
     "homepage": "https://koopstrategicadvisory.github.io/Pagina-principal-Koop",
     "scripts": {
-        "dev": "vite",
+        "dev": "vite --clearScreen false",
         "build": "vite build",
         "preview": "vite preview",
-        "predeploy": "npm run build",
+        "lint": "eslint \"src/**/*.{js,jsx}\"",
+        "predeploy": "pnpm run build",
         "deploy": "gh-pages -d dist",
-        "test": "echo \"Error: no test specified\" && exit 1",
         "postbuild": "node scripts/postbuild-404.js"
     },
     "dependencies": {
+        "@repo/auth": "workspace:*",
+        "@repo/hooks": "workspace:*",
+        "@repo/persistence": "workspace:*",
+        "@repo/types": "workspace:*",
+        "@repo/ui": "workspace:*",
         "axios": "^1.11.0",
         "firebase": "^10.14.1",
         "react": "^18.2.0",
@@ -20,8 +26,14 @@
         "react-router-dom": "^6.30.1"
     },
     "devDependencies": {
+        "@repo/eslint-config": "workspace:*",
+        "@repo/typescript-config": "workspace:*",
+        "@types/react": "^19.0.1",
+        "@types/react-dom": "^19.0.2",
         "@vitejs/plugin-react": "^4.0.0",
+        "eslint": "^8.57.0",
         "gh-pages": "^6.1.0",
+        "typescript": "5.5.4",
         "vite": "^5.0.0"
     }
 }

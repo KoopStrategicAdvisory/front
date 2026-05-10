@@ -11,6 +11,9 @@ export type {
   FeedbackState,
   ContactFormData,
   FeedbackFormData,
+  CalendarState,
+  CalendarEvent,
+  CalendarEventAudience,
 } from "./shared/types";
 
 export { StateManagerFactory } from "./managers/StateManagerFactory";

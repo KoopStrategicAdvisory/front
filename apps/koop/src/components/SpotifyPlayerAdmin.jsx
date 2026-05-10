@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../context/AuthContext.jsx';
+﻿import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../context/AuthContext';
 import './SpotifyPlayerAdmin.css';
 
 export default function SpotifyPlayerAdmin() {
@@ -34,7 +34,7 @@ export default function SpotifyPlayerAdmin() {
     setIsDragging(true);
     const rect = playerRef.current.getBoundingClientRect();
     
-    // Obtener coordenadas según el tipo de evento
+    // Obtener coordenadas segÃºn el tipo de evento
     const clientX = e.clientX || (e.touches && e.touches[0].clientX);
     const clientY = e.clientY || (e.touches && e.touches[0].clientY);
     
@@ -47,7 +47,7 @@ export default function SpotifyPlayerAdmin() {
   const handleMove = (e) => {
     if (!isDragging) return;
     
-    // Obtener coordenadas según el tipo de evento
+    // Obtener coordenadas segÃºn el tipo de evento
     const clientX = e.clientX || (e.touches && e.touches[0].clientX);
     const clientY = e.clientY || (e.touches && e.touches[0].clientY);
     
@@ -55,8 +55,8 @@ export default function SpotifyPlayerAdmin() {
     const newY = clientY - dragOffset.y;
     
     // Limitar a los bordes de la ventana
-    const maxX = window.innerWidth - 50; // 50px es el ancho del botón
-    const maxY = window.innerHeight - 50; // 50px es la altura del botón
+    const maxX = window.innerWidth - 50; // 50px es el ancho del botÃ³n
+    const maxY = window.innerHeight - 50; // 50px es la altura del botÃ³n
     
     setPosition({
       x: Math.max(0, Math.min(newX, maxX)),
@@ -74,7 +74,7 @@ export default function SpotifyPlayerAdmin() {
       document.addEventListener('mousemove', handleMove);
       document.addEventListener('mouseup', handleEnd);
       
-      // Eventos táctiles
+      // Eventos tÃ¡ctiles
       document.addEventListener('touchmove', handleMove, { passive: false });
       document.addEventListener('touchend', handleEnd);
       
@@ -87,7 +87,7 @@ export default function SpotifyPlayerAdmin() {
     }
   }, [isDragging, dragOffset]);
 
-  // Intentar activar shuffle después de cargar el iframe
+  // Intentar activar shuffle despuÃ©s de cargar el iframe
   useEffect(() => {
     if (isExpanded) {
       const timer = setTimeout(() => {
@@ -101,7 +101,7 @@ export default function SpotifyPlayerAdmin() {
               value: true
             }, 'https://open.spotify.com');
           } catch (e) {
-            console.log('No se pudo activar shuffle automáticamente');
+            console.log('No se pudo activar shuffle automÃ¡ticamente');
           }
         }
       }, 2000); // Esperar 2 segundos para que se cargue el iframe
@@ -132,7 +132,7 @@ export default function SpotifyPlayerAdmin() {
       onMouseDown={handleStart}
       onTouchStart={handleStart}
     >
-      {/* Botón de expandir/contraer */}
+      {/* BotÃ³n de expandir/contraer */}
       <div
         style={{
           position: 'absolute',
@@ -174,7 +174,7 @@ export default function SpotifyPlayerAdmin() {
           e.target.style.borderColor = 'rgba(148, 163, 184, 0.3)';
         }}
       >
-        <span style={{ fontSize: '18px', color: '#fc771c' }}>♪</span>
+        <span style={{ fontSize: '18px', color: '#fc771c' }}>â™ª</span>
       </div>
 
       {/* Reproductor expandido */}
@@ -198,3 +198,4 @@ export default function SpotifyPlayerAdmin() {
     </div>
   );
 }
+

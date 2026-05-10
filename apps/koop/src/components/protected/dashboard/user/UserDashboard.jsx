@@ -1,6 +1,6 @@
 ﻿import { useMemo, useState } from 'react';
 import { Link } from "react-router-dom";
-import { useAuth } from "../../../../context/AuthContext.jsx";
+import { useAuth } from "../../../../context/AuthContext";
 import useCalendarEvents from "../../../../hooks/useCalendarEvents";
 import { normalizeUpperAscii } from "../../../../utils/strings.js";
 import "../../../../styles/dashboard.css";
@@ -162,6 +162,7 @@ export default function UserDashboard() {
     </div>
   );
 }
+
 
 
 
