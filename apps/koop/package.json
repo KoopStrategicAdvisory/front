@@ -16,6 +16,8 @@
     "dependencies": {
         "@repo/auth": "workspace:*",
         "@repo/hooks": "workspace:*",
+        "@repo/koop-store": "workspace:*",
+        "@repo/koop-ui": "workspace:*",
         "@repo/persistence": "workspace:*",
         "@repo/types": "workspace:*",
         "@repo/ui": "workspace:*",

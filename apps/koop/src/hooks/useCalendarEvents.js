@@ -1,34 +1,16 @@
-﻿import { useCallback, useEffect, useState } from 'react';
-import { loadCalendarEvents, saveCalendarEvents } from '../infraestructure/calendarStorage';
-
-const STORAGE_KEY = 'koop.calendar.events';
+import { useCalendarStore } from '@repo/koop-store';
 
 export default function useCalendarEvents() {
-  const [events, setEvents] = useState(() => loadCalendarEvents());
+  const events = useCalendarStore((s) => s.events);
+  const setEvents = useCalendarStore((s) => s.setEvents);
+  const addEvent = useCalendarStore((s) => s.addEvent);
+  const updateEvent = useCalendarStore((s) => s.updateEvent);
+  const removeEvent = useCalendarStore((s) => s.removeEvent);
 
-  useEffect(() => {
-    const handler = (evt) => {
-      if (evt?.key === STORAGE_KEY) {
-        setEvents(loadCalendarEvents());
-      }
-    };
-    if (typeof window !== 'undefined') {
-      window.addEventListener('storage', handler);
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('storage', handler);
-      }
-    };
-  }, []);
+  const updateEvents = (updater) => {
+    const next = typeof updater === 'function' ? updater(events) : updater;
+    setEvents(next);
+  };
 
-  const updateEvents = useCallback((updater) => {
-    setEvents((prev) => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      saveCalendarEvents(next);
-      return next;
-    });
-  }, []);
-
-  return [events, updateEvents];
+  return [events, updateEvents, { addEvent, updateEvent, removeEvent }];
 }

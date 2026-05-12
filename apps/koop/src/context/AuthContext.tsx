@@ -6,8 +6,9 @@ import React, {
   useEffect,
   type PropsWithChildren,
 } from 'react';
-import { useAuthSession, type AuthSession } from '@repo/auth';
-import { loginApi, registerApi, logoutApi, refreshApi } from '../api/auth';
+import { useAuthSession } from '@repo/auth';
+import { refreshApi } from '../api/auth';
+import { koopAuthProvider } from '../auth/KoopCustomApiProvider';
 import { setupAxiosInterceptors } from '../api/axios';
 import type { KoopUser, KoopRole } from '@repo/types';
 
@@ -44,55 +45,6 @@ function normalizeRoles(value: unknown, defaultRole: KoopRole = 'user'): KoopRol
   return [safeDefault];
 }
 
-function decodeJwt(token: string): Record<string, unknown> | null {
-  try {
-    const payload = token.split('.')[1];
-    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
-
-function buildKoopUser(
-  jwtPayload: Record<string, unknown> | null,
-  fallback?: Record<string, unknown> | null
-): KoopUser | null {
-  const src = jwtPayload ?? fallback;
-  if (!src) return null;
-  return {
-    id: String(src.sub ?? src.id ?? ''),
-    name: String(src.name ?? ''),
-    email: String(src.email ?? ''),
-    roles: normalizeRoles(src.roles),
-    active: src.active !== false,
-    driveFolders: Array.isArray(src.driveFolders) ? (src.driveFolders as string[]) : [],
-  };
-}
-
-function sessionFromLoginResponse(
-  accessToken: string,
-  rawUser?: Record<string, unknown>
-): AuthSession {
-  const payload = decodeJwt(accessToken);
-  const user = buildKoopUser(payload, rawUser);
-  return {
-    accessToken,
-    provider: 'custom-api',
-    issuedAt: Date.now(),
-    user: user
-      ? {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          roles: user.roles,
-          provider: 'custom-api',
-          raw: rawUser,
-        }
-      : null,
-  };
-}
-
 export function AuthProvider({ children }: PropsWithChildren) {
   const { session, setSession, clearSession } = useAuthSession();
   const loadingRef = useRef(false);
@@ -115,8 +67,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const login = async (email: string, password: string) => {
     loadingRef.current = true;
     try {
-      const data = await loginApi({ email, password });
-      const authSession = sessionFromLoginResponse(data.accessToken, data.user);
+      const authSession = await koopAuthProvider.signIn({ email, password });
       setSession(authSession);
       return { ok: true };
     } catch (err: unknown) {
@@ -134,18 +85,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
   ) => {
     loadingRef.current = true;
     try {
-      const hasRoles = Array.isArray(roles) && roles.length > 0;
-      const data = await registerApi({
-        name,
-        email,
-        password,
-        roles: hasRoles ? normalizeRoles(roles) : undefined,
-      });
-      if (data?.accessToken) {
-        const authSession = sessionFromLoginResponse(data.accessToken, data.user);
-        setSession(authSession);
-      }
-      return { ok: true, data };
+      const authSession = await koopAuthProvider.signUp(name, email, password, roles);
+      if (authSession) setSession(authSession);
+      return { ok: true };
     } catch (err: unknown) {
       return { ok: false, error: (err as Error).message };
     } finally {
@@ -154,13 +96,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   };
 
   const logout = async () => {
-    try {
-      await logoutApi();
-    } catch {
-      // no bloquear el cierre local si el servidor falla
-    } finally {
-      clearSession();
-    }
+    await koopAuthProvider.signOut();
+    clearSession();
   };
 
   // Ref siempre actualizado para que los interceptores de axios no capturen sesión stale
