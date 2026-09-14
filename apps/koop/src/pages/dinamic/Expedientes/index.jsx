@@ -6,7 +6,8 @@ import { useAuth } from '../../../context/AuthContext';
 import { listTiposProceso, listTipoProcCombo, listSubtiposProceso, listTiposPretension } from '../../../api/catalogos';
 import { listClientes } from '../../../api/clientes';
 import { EditForm, EditRow, EditField, EditSelect } from '../../../components/common/EditFormKit';
-import { Modal, ModalFooter, DeleteModal } from '../../../components/common/Modal';
+import { Modal, DeleteModal } from '../../../components/common/Modal';
+import { WizardSteps, WizardPanel, WizardFooter, Reveal } from '../../../components/common/Wizard';
 import '../../../styles/dashboard.css';
 import '../../../styles/mi-expediente.css';
 
@@ -21,105 +22,137 @@ const EMPTY_FORM = {
   _subtipoProceso: '',
 };
 
-function CascadeSelector({ tiposProceso, combos, subtiposProceso, tiposPretension, form, onChange }) {
+const WIZARD_STEPS = ['Datos básicos', 'Materia del caso', 'Confirmar'];
+
+// Asistente paso a paso para crear/editar un expediente. Antes era un solo
+// formulario plano con todos los campos a la vez; ahora avanza en 3 pasos
+// (datos básicos -> materia del caso en cascada -> confirmación), con
+// transiciones animadas entre pasos y revelado progresivo de los campos
+// dependientes (subtipo tras elegir tipo, pretensión tras elegir subtipo).
+function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProceso, tiposPretension, clientes, onSubmit, onCancel, submitLabel, submitting, startMaxReached = 0 }) {
+  const [step, setStep] = useState(0);
+  const [maxReached, setMaxReached] = useState(startMaxReached);
+  const [direction, setDirection] = useState(1);
+
+  const set = (field) => (e) => onChange({ ...form, [field]: e.target.value });
+
   const nombreSubtipo = (id) => subtiposProceso.find((s) => String(s.id) === String(id))?.nombre || `Subtipo #${id}`;
   const nombrePretension = (id) => tiposPretension.find((p) => String(p.id) === String(id))?.nombre || `Pretensión #${id}`;
+  const nombreCliente = clientes.find((c) => String(c.id) === String(form.id_cliente))?.nombre;
+  const nombreTipoProceso = tiposProceso.find((t) => String(t.id) === String(form._tipoProceso))?.nombre;
 
-  const tipoOptions = useMemo(
-    () => tiposProceso.map((t) => ({ value: String(t.id), label: t.nombre })),
-    [tiposProceso]
-  );
+  const clienteOptions = clientes.map((c) => ({ value: String(c.id), label: c.nombre }));
+  const tipoOptions = useMemo(() => tiposProceso.map((t) => ({ value: String(t.id), label: t.nombre })), [tiposProceso]);
 
   const subtipoOptions = useMemo(() => {
     if (!form._tipoProceso) return [];
     const seen = new Set();
     return combos
       .filter((c) => String(c.id_tipo_proceso) === String(form._tipoProceso))
-      .filter((c) => {
-        if (seen.has(c.id_subtipo_proceso)) return false;
-        seen.add(c.id_subtipo_proceso);
-        return true;
-      })
+      .filter((c) => (seen.has(c.id_subtipo_proceso) ? false : seen.add(c.id_subtipo_proceso)))
       .map((c) => ({ value: String(c.id_subtipo_proceso), label: nombreSubtipo(c.id_subtipo_proceso) }));
   }, [combos, form._tipoProceso, subtiposProceso]);
 
   const pretensionOptions = useMemo(() => {
     if (!form._subtipoProceso) return [];
     return combos
-      .filter(
-        (c) =>
-          String(c.id_tipo_proceso) === String(form._tipoProceso) &&
-          String(c.id_subtipo_proceso) === String(form._subtipoProceso)
-      )
+      .filter((c) => String(c.id_tipo_proceso) === String(form._tipoProceso) && String(c.id_subtipo_proceso) === String(form._subtipoProceso))
       .map((c) => ({ value: String(c.id), label: nombrePretension(c.id_tipo_pretension) }));
   }, [combos, form._tipoProceso, form._subtipoProceso, tiposPretension]);
 
-  const onTipo = (e) => {
-    onChange({ ...form, _tipoProceso: e.target.value, _subtipoProceso: '', id_tipo_proc_subtipo_proc_tipo_pre: '' });
-  };
-  const onSubtipo = (e) => {
-    onChange({ ...form, _subtipoProceso: e.target.value, id_tipo_proc_subtipo_proc_tipo_pre: '' });
-  };
-  const onPretension = (e) => {
-    onChange({ ...form, id_tipo_proc_subtipo_proc_tipo_pre: e.target.value });
-  };
+  const onTipo = (e) => onChange({ ...form, _tipoProceso: e.target.value, _subtipoProceso: '', id_tipo_proc_subtipo_proc_tipo_pre: '' });
+  const onSubtipo = (e) => onChange({ ...form, _subtipoProceso: e.target.value, id_tipo_proc_subtipo_proc_tipo_pre: '' });
+  const onPretension = (e) => onChange({ ...form, id_tipo_proc_subtipo_proc_tipo_pre: e.target.value });
 
-  if (tiposProceso.length === 0) {
-    return (
-      <EditRow cols={1}>
-        <EditField label="Tipo de proceso" value="" onChange={() => {}} placeholder="Cargando catálogo..." inputProps={{ readOnly: true }} />
-      </EditRow>
-    );
-  }
+  const stepValid = [
+    !!form.numero_de_expediente.trim() && !!form.id_cliente,
+    !!form.id_tipo_proc_subtipo_proc_tipo_pre,
+    true,
+  ];
+
+  const goTo = (i) => { setDirection(i > step ? 1 : -1); setStep(i); };
+  const goNext = () => { if (!stepValid[step]) return; const next = Math.min(step + 1, WIZARD_STEPS.length - 1); setDirection(1); setStep(next); setMaxReached((m) => Math.max(m, next)); };
+  const goBack = () => { setDirection(-1); setStep((s) => Math.max(0, s - 1)); };
 
   return (
-    <>
-      <EditRow cols={2}>
-        <EditSelect
-          label="Tipo de proceso"
-          value={form._tipoProceso}
-          onChange={onTipo}
-          options={[{ value: '', label: 'Seleccione tipo de proceso' }, ...tipoOptions]}
-        />
-        <EditSelect
-          label="Subtipo de proceso"
-          value={form._subtipoProceso}
-          onChange={onSubtipo}
-          options={[{ value: '', label: form._tipoProceso ? 'Seleccione subtipo' : '— Seleccione tipo primero —' }, ...subtipoOptions]}
-          disabled={!form._tipoProceso}
-        />
-      </EditRow>
-      {pretensionOptions.length > 0 && (
-        <EditRow cols={1}>
-          <EditSelect
-            label="Tipo de pretensión"
-            value={form.id_tipo_proc_subtipo_proc_tipo_pre}
-            onChange={onPretension}
-            options={[{ value: '', label: 'Seleccione pretensión' }, ...pretensionOptions]}
-          />
-        </EditRow>
-      )}
-    </>
-  );
-}
+    <div>
+      <WizardSteps steps={WIZARD_STEPS} current={step} maxReached={maxReached} onJump={goTo} />
 
-function ExpedienteFormFields({ form, onChange, tiposProceso, combos, subtiposProceso, tiposPretension, clientes }) {
-  const set = (field) => (e) => onChange({ ...form, [field]: e.target.value });
-  const clienteOptions = clientes.map((c) => ({ value: String(c.id), label: c.nombre }));
-  return (
-    <EditForm style={{ marginTop: 8 }}>
-      <EditRow cols={2}>
-        <EditField label="N° Expediente *" value={form.numero_de_expediente} onChange={set('numero_de_expediente')} placeholder="KOOP-2024-001" />
-        <EditSelect
-          label="Cliente *"
-          value={form.id_cliente}
-          onChange={set('id_cliente')}
-          options={[{ value: '', label: clientes.length ? 'Seleccione cliente' : 'Cargando clientes...' }, ...clienteOptions]}
-        />
-      </EditRow>
-      <CascadeSelector tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} form={form} onChange={onChange} />
-      <EditField label="Juzgado / Autoridad que conoce" value={form.juzgado_o_autoridad_que_conoce} onChange={set('juzgado_o_autoridad_que_conoce')} placeholder="Juzgado 5 Laboral del Circuito de Bogotá" />
-    </EditForm>
+      <WizardPanel stepKey={step} direction={direction}>
+        {step === 0 && (
+          <EditForm>
+            <EditField label="N° Expediente *" value={form.numero_de_expediente} onChange={set('numero_de_expediente')} placeholder="KOOP-2024-001" />
+            <EditSelect
+              label="Cliente *"
+              value={form.id_cliente}
+              onChange={set('id_cliente')}
+              options={[{ value: '', label: clientes.length ? 'Seleccione cliente' : 'Cargando clientes...' }, ...clienteOptions]}
+            />
+          </EditForm>
+        )}
+
+        {step === 1 && (
+          <EditForm>
+            {tiposProceso.length === 0 ? (
+              <EditField label="Tipo de proceso" value="" onChange={() => {}} placeholder="Cargando catálogo..." inputProps={{ readOnly: true }} />
+            ) : (
+              <>
+                <EditSelect
+                  label="Tipo de proceso"
+                  value={form._tipoProceso}
+                  onChange={onTipo}
+                  options={[{ value: '', label: 'Seleccione tipo de proceso' }, ...tipoOptions]}
+                />
+                {form._tipoProceso && (
+                  <Reveal revealKey={`subtipo-${form._tipoProceso}`}>
+                    <EditSelect
+                      label="Subtipo de proceso"
+                      value={form._subtipoProceso}
+                      onChange={onSubtipo}
+                      options={[{ value: '', label: 'Seleccione subtipo' }, ...subtipoOptions]}
+                    />
+                  </Reveal>
+                )}
+                {form._subtipoProceso && pretensionOptions.length > 0 && (
+                  <Reveal revealKey={`pretension-${form._subtipoProceso}`}>
+                    <EditSelect
+                      label="Tipo de pretensión"
+                      value={form.id_tipo_proc_subtipo_proc_tipo_pre}
+                      onChange={onPretension}
+                      options={[{ value: '', label: 'Seleccione pretensión' }, ...pretensionOptions]}
+                    />
+                  </Reveal>
+                )}
+              </>
+            )}
+          </EditForm>
+        )}
+
+        {step === 2 && (
+          <EditForm>
+            <EditField label="Juzgado / Autoridad que conoce" value={form.juzgado_o_autoridad_que_conoce} onChange={set('juzgado_o_autoridad_que_conoce')} placeholder="Juzgado 5 Laboral del Circuito de Bogotá" />
+            <dl className="kf-wizard-summary">
+              <div className="kf-wizard-summary-row"><dt>N° Expediente</dt><dd>{form.numero_de_expediente || '—'}</dd></div>
+              <div className="kf-wizard-summary-row"><dt>Cliente</dt><dd>{nombreCliente || '—'}</dd></div>
+              <div className="kf-wizard-summary-row"><dt>Materia</dt><dd>{nombreTipoProceso || '—'}</dd></div>
+            </dl>
+          </EditForm>
+        )}
+      </WizardPanel>
+
+      <WizardFooter>
+        {step === 0 ? (
+          <button className="btn btn-secondary" onClick={onCancel}>Cancelar</button>
+        ) : (
+          <button className="btn btn-secondary" onClick={goBack}>← Atrás</button>
+        )}
+        {step < WIZARD_STEPS.length - 1 ? (
+          <button className="btn btn-primary" onClick={goNext} disabled={!stepValid[step]}>Siguiente →</button>
+        ) : (
+          <button className="btn btn-primary" onClick={onSubmit} disabled={submitting}>{submitLabel}</button>
+        )}
+      </WizardFooter>
+    </div>
   );
 }
 
@@ -402,13 +435,20 @@ export default function Expedientes() {
       )}
 
       <Modal show={showCreate} onClose={() => setShowCreate(false)} title="➕ Nuevo Expediente">
-        <ExpedienteFormFields form={form} onChange={setForm} tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes} />
-        <ModalFooter onCancel={() => setShowCreate(false)} onConfirm={handleCreate} confirmLabel="Crear" confirmDisabled={loading} />
+        <ExpedienteWizard
+          form={form} onChange={setForm}
+          tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes}
+          onSubmit={handleCreate} onCancel={() => setShowCreate(false)} submitLabel="Crear expediente" submitting={loading}
+        />
       </Modal>
 
       <Modal show={showEdit && !!editTarget} onClose={() => setShowEdit(false)} title="✏️ Editar Expediente">
-        <ExpedienteFormFields form={form} onChange={setForm} tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes} />
-        <ModalFooter onCancel={() => setShowEdit(false)} onConfirm={handleEdit} confirmLabel="Guardar" confirmDisabled={loading} />
+        <ExpedienteWizard
+          form={form} onChange={setForm}
+          tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes}
+          onSubmit={handleEdit} onCancel={() => setShowEdit(false)} submitLabel="Guardar cambios" submitting={loading}
+          startMaxReached={WIZARD_STEPS.length - 1}
+        />
       </Modal>
 
       <DeleteModal

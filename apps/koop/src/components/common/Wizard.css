@@ -1,0 +1,154 @@
+/* Asistente paso a paso genérico (usado por la creación/edición de
+   Expediente). Header de progreso con círculos numerados + panel de
+   contenido que se desvanece/desliza al cambiar de paso. */
+
+.kf-wizard-steps {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 26px;
+}
+
+.kf-wizard-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.kf-wizard-step-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.kf-wizard-step-btn:disabled {
+  cursor: default;
+}
+
+.kf-wizard-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1.5px solid rgba(148, 163, 184, 0.3);
+  color: #7d8ba3;
+  background: rgba(148, 163, 184, 0.06);
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.kf-wizard-step--active .kf-wizard-circle {
+  border-color: #7c7ff5;
+  background: linear-gradient(135deg, #7c7ff5, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(124, 127, 245, 0.16);
+  transform: scale(1.06);
+}
+
+.kf-wizard-step--done .kf-wizard-circle {
+  border-color: rgba(79, 209, 197, 0.5);
+  background: rgba(79, 209, 197, 0.14);
+  color: #4fd1c5;
+}
+
+.kf-wizard-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #7d8ba3;
+  text-align: center;
+  transition: color 0.2s ease;
+}
+
+.kf-wizard-step--active .kf-wizard-label { color: #dbe4f7; }
+.kf-wizard-step--done .kf-wizard-label { color: #9fb3cc; }
+
+.kf-wizard-line {
+  flex: 1;
+  height: 1.5px;
+  background: rgba(148, 163, 184, 0.22);
+  margin-top: 16px;
+  position: relative;
+  top: 0;
+  min-width: 16px;
+}
+
+.kf-wizard-line--done {
+  background: rgba(79, 209, 197, 0.45);
+}
+
+/* Panel de contenido del paso actual */
+@keyframes kf-step-in {
+  from { opacity: 0; transform: translateX(calc(20px * var(--kf-dir, 1))); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.kf-wizard-panel {
+  animation: kf-step-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+  min-height: 120px;
+}
+
+/* Revelado progresivo de campos dependientes (p.ej. subtipo tras elegir tipo,
+   pretensión tras elegir subtipo): se desvanecen con un leve desenfoque. */
+@keyframes kf-reveal {
+  from { opacity: 0; transform: translateY(6px); filter: blur(3px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+.kf-reveal {
+  animation: kf-reveal 0.38s ease both;
+}
+
+.kf-wizard-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.kf-wizard-summary {
+  display: grid;
+  gap: 10px;
+  background: rgba(124, 127, 245, 0.06);
+  border: 1px solid rgba(124, 127, 245, 0.16);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.kf-wizard-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.kf-wizard-summary-row dt {
+  color: #7d8ba3;
+}
+
+.kf-wizard-summary-row dd {
+  margin: 0;
+  color: #e8edf5;
+  font-weight: 600;
+  text-align: right;
+}
+
+@media (max-width: 520px) {
+  .kf-wizard-label { display: none; }
+  .kf-wizard-line { margin-top: 15px; }
+}
