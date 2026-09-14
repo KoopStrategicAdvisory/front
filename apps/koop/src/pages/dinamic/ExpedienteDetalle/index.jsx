@@ -9,7 +9,8 @@ import { getDownloadUrl } from '../../../api/documentosExpediente';
 import { useAccess } from '../../../context/AccessContext';
 import { createEtapa, updateEtapa, deleteEtapa } from '../../../api/expedientes';
 import { listEstadosTarea, listPrioridades, listTiposActuacion, listEstadosEtapa, listEtapasProcesales, listTiposDocumento } from '../../../api/catalogos';
-import { EditForm, EditRow, EditField, EditTextArea, EditSelect } from '../../../components/common/EditFormKit';
+import { EditForm, EditRow, EditField, EditTextArea, EditSelect, EditCheckbox, EditFileField } from '../../../components/common/EditFormKit';
+import { Modal, ModalFooter, DeleteModal } from '../../../components/common/Modal';
 import '../../../styles/dashboard.css';
 import '../../../styles/mi-expediente.css';
 
@@ -40,10 +41,7 @@ function ActuacionForm({ f, onF, tipoActuacionOpts }) {
       </EditRow>
       <EditField label="Autoridad que emite" value={f.autoridad_emite} onChange={(e) => onF({ ...f, autoridad_emite: e.target.value })} placeholder="Juzgado 5 Laboral" />
       <EditTextArea label="Descripción" value={f.descripcion} onChange={(e) => onF({ ...f, descripcion: e.target.value })} rows={3} placeholder="Descripción detallada..." />
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#9fb3cc', cursor: 'pointer', marginTop: 4 }}>
-        <input type="checkbox" checked={!!f.es_hito} onChange={(e) => onF({ ...f, es_hito: e.target.checked })} />
-        Es hito procesal
-      </label>
+      <EditCheckbox label="Es hito procesal" checked={f.es_hito} onChange={(e) => onF({ ...f, es_hito: e.target.checked })} />
     </EditForm>
   );
 }
@@ -434,10 +432,7 @@ function TareaForm({ f, onF, estadoOpts, prioridadOpts }) {
       </EditRow>
       <EditField label="Fecha límite" type="date" value={f.fecha_limite} onChange={(e) => onF({ ...f, fecha_limite: e.target.value })} />
       <EditTextArea label="Descripción" value={f.descripcion} onChange={(e) => onF({ ...f, descripcion: e.target.value })} rows={2} placeholder="Detalles..." />
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#9fb3cc', cursor: 'pointer', marginTop: 4 }}>
-        <input type="checkbox" checked={!!f.es_hito_preclusivo} onChange={(e) => onF({ ...f, es_hito_preclusivo: e.target.checked })} />
-        Es hito preclusivo
-      </label>
+      <EditCheckbox label="Es hito preclusivo" checked={f.es_hito_preclusivo} onChange={(e) => onF({ ...f, es_hito_preclusivo: e.target.checked })} />
     </EditForm>
   );
 }
@@ -554,44 +549,6 @@ function Badge({ color, children }) {
   return <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 8, background: `${color}22`, color, border: `1px solid ${color}44`, textTransform: 'uppercase', fontWeight: 600 }}>{children}</span>;
 }
 
-function Modal({ show, onClose, title, children }) {
-  if (!show) return null;
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
-      <div style={{ background: '#1e2a3a', borderRadius: 12, padding: 24, maxWidth: 560, width: '90%', border: `1px solid ${borderCol}`, maxHeight: '90vh', overflowY: 'auto' }}>
-        <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 600, color: '#e2e8f0' }}>{title}</h3>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function ModalFooter({ onCancel, onConfirm, confirmLabel }) {
-  return (
-    <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
-      <button className="btn btn-secondary" onClick={onCancel} style={{ padding: '10px 20px' }}>Cancelar</button>
-      <button className="btn btn-primary" onClick={onConfirm} style={{ padding: '10px 20px' }}>{confirmLabel}</button>
-    </div>
-  );
-}
-
-function DeleteModal({ show, onClose, onConfirm, label }) {
-  if (!show) return null;
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
-      <div style={{ background: '#1e2a3a', borderRadius: 12, padding: 24, maxWidth: 400, width: '90%', border: `1px solid ${borderCol}` }}>
-        <h3 style={{ margin: '0 0 16px', fontSize: 18, fontWeight: 600, color: '#e2e8f0' }}>🗑️ Confirmar eliminación</h3>
-        <p style={{ color: '#9fb3cc', fontSize: 14 }}>¿Eliminar <strong style={{ color: '#fc771c' }}>{label}</strong>?</p>
-        <p style={{ color: '#ef4444', fontSize: 12, marginBottom: 20 }}>⚠️ Esta acción no se puede deshacer.</p>
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-          <button className="btn btn-secondary" onClick={onClose} style={{ padding: '10px 20px' }}>Cancelar</button>
-          <button className="btn btn-danger" onClick={onConfirm} style={{ padding: '10px 20px' }}>Eliminar</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Documentos Tab ───────────────────────────────────────────────────────────
 const EMPTY_DOCUMENTO = { file: null, titulo: '', id_tipo_documento: '', descripcion: '', visibilidad_cliente: false };
 
@@ -605,22 +562,15 @@ function formatBytes(bytes) {
 function DocumentoForm({ f, onF, tipoDocumentoOpts }) {
   return (
     <EditForm style={{ marginTop: 8 }}>
-      <div>
-        <label style={{ display: 'block', fontSize: 13, color: '#9fb3cc', marginBottom: 6 }}>Archivo *</label>
-        <input
-          type="file"
-          onChange={(e) => onF({ ...f, file: e.target.files?.[0] || null, titulo: f.titulo || e.target.files?.[0]?.name || '' })}
-          style={{ width: '100%', padding: '10px', background: '#1e2a3a', border: `1px solid ${borderCol}`, borderRadius: 8, color: '#e2e8f0', fontSize: 13 }}
-        />
-        {f.file && <div style={{ fontSize: 12, color: '#67e8f9', marginTop: 6 }}>{f.file.name} · {formatBytes(f.file.size)}</div>}
-      </div>
+      <EditFileField
+        label="Archivo *"
+        file={f.file}
+        onChange={(e) => onF({ ...f, file: e.target.files?.[0] || null, titulo: f.titulo || e.target.files?.[0]?.name || '' })}
+      />
       <EditField label="Título" value={f.titulo} onChange={(e) => onF({ ...f, titulo: e.target.value })} placeholder="Auto admisorio - notificación" />
       <EditSelect label="Tipo de documento *" value={f.id_tipo_documento} onChange={(e) => onF({ ...f, id_tipo_documento: e.target.value })} options={tipoDocumentoOpts} />
       <EditTextArea label="Descripción" value={f.descripcion} onChange={(e) => onF({ ...f, descripcion: e.target.value })} rows={2} placeholder="Notas sobre el documento..." />
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#9fb3cc', cursor: 'pointer', marginTop: 4 }}>
-        <input type="checkbox" checked={!!f.visibilidad_cliente} onChange={(e) => onF({ ...f, visibilidad_cliente: e.target.checked })} />
-        Visible para el cliente
-      </label>
+      <EditCheckbox label="Visible para el cliente" checked={f.visibilidad_cliente} onChange={(e) => onF({ ...f, visibilidad_cliente: e.target.checked })} />
     </EditForm>
   );
 }

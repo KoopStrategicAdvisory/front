@@ -1,0 +1,103 @@
+/* Modal compartido — reemplaza las versiones duplicadas e inline que había
+   en cada página (fondo plano sin animación, sombra mínima). */
+
+@keyframes kf-modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes kf-modal-pop-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.kf-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 22, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 16px;
+  animation: kf-modal-fade-in 0.15s ease;
+}
+
+.kf-modal-card {
+  background: linear-gradient(165deg, #1c2942 0%, #151f34 100%);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 16px;
+  width: min(620px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  animation: kf-modal-pop-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.kf-modal-card--sm {
+  width: min(420px, 100%);
+}
+
+.kf-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.kf-modal-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  color: #edf1f8;
+}
+
+.kf-modal-close {
+  background: rgba(148, 163, 184, 0.1);
+  border: none;
+  color: #9fb3cc;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.kf-modal-close:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
+.kf-modal-body {
+  padding: 20px 24px 24px;
+}
+
+.kf-modal-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding: 16px 24px 22px;
+}
+
+.kf-modal-text {
+  color: #a7b6cc;
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0 0 10px;
+}
+
+.kf-modal-warning {
+  color: #fca5a5;
+  font-size: 12.5px;
+  margin: 0;
+}

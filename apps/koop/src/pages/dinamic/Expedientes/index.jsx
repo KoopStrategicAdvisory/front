@@ -6,6 +6,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { listTiposProceso, listTipoProcCombo, listSubtiposProceso, listTiposPretension } from '../../../api/catalogos';
 import { listClientes } from '../../../api/clientes';
 import { EditForm, EditRow, EditField, EditSelect } from '../../../components/common/EditFormKit';
+import { Modal, ModalFooter, DeleteModal } from '../../../components/common/Modal';
 import '../../../styles/dashboard.css';
 import '../../../styles/mi-expediente.css';
 
@@ -400,50 +401,24 @@ export default function Expedientes() {
         </div>
       )}
 
-      {/* Modal: Crear */}
-      {showCreate && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
-          <div style={{ background: '#1e2a3a', borderRadius: 12, padding: 24, maxWidth: 640, width: '90%', border: `1px solid ${borderCol}`, maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 600, color: '#e2e8f0' }}>➕ Nuevo Expediente</h3>
-            <ExpedienteFormFields form={form} onChange={setForm} tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes} />
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)} style={{ padding: '10px 20px' }}>Cancelar</button>
-              <button className="btn btn-primary" onClick={handleCreate} style={{ padding: '10px 20px' }} disabled={loading}>Crear</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal show={showCreate} onClose={() => setShowCreate(false)} title="➕ Nuevo Expediente">
+        <ExpedienteFormFields form={form} onChange={setForm} tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes} />
+        <ModalFooter onCancel={() => setShowCreate(false)} onConfirm={handleCreate} confirmLabel="Crear" confirmDisabled={loading} />
+      </Modal>
 
-      {/* Modal: Editar */}
-      {showEdit && editTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
-          <div style={{ background: '#1e2a3a', borderRadius: 12, padding: 24, maxWidth: 640, width: '90%', border: `1px solid ${borderCol}`, maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 600, color: '#e2e8f0' }}>✏️ Editar Expediente</h3>
-            <ExpedienteFormFields form={form} onChange={setForm} tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes} />
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
-              <button className="btn btn-secondary" onClick={() => setShowEdit(false)} style={{ padding: '10px 20px' }}>Cancelar</button>
-              <button className="btn btn-primary" onClick={handleEdit} style={{ padding: '10px 20px' }} disabled={loading}>Guardar</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal show={showEdit && !!editTarget} onClose={() => setShowEdit(false)} title="✏️ Editar Expediente">
+        <ExpedienteFormFields form={form} onChange={setForm} tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes} />
+        <ModalFooter onCancel={() => setShowEdit(false)} onConfirm={handleEdit} confirmLabel="Guardar" confirmDisabled={loading} />
+      </Modal>
 
-      {/* Modal: Eliminar */}
-      {showDelete && editTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
-          <div style={{ background: '#1e2a3a', borderRadius: 12, padding: 24, maxWidth: 400, width: '90%', border: `1px solid ${borderCol}` }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 18, fontWeight: 600, color: '#e2e8f0' }}>🗑️ Eliminar Expediente</h3>
-            <p style={{ margin: '0 0 8px', color: '#9fb3cc', fontSize: 14 }}>
-              ¿Eliminar el expediente <strong style={{ color: '#fc771c' }}>{editTarget.numero_de_expediente}</strong> — {clienteNombre(editTarget.id_cliente) || 'sin cliente'}?
-            </p>
-            <p style={{ margin: '0 0 20px', color: '#ef4444', fontSize: 12 }}>⚠️ Esta acción no se puede deshacer.</p>
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-              <button className="btn btn-secondary" onClick={() => setShowDelete(false)} style={{ padding: '10px 20px' }}>Cancelar</button>
-              <button className="btn btn-danger" onClick={handleDelete} style={{ padding: '10px 20px' }} disabled={loading}>Eliminar</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteModal
+        show={showDelete && !!editTarget}
+        onClose={() => setShowDelete(false)}
+        onConfirm={handleDelete}
+        description={editTarget && (
+          <>¿Eliminar el expediente <strong style={{ color: '#fc771c' }}>{editTarget.numero_de_expediente}</strong> — {clienteNombre(editTarget.id_cliente) || 'sin cliente'}?</>
+        )}
+      />
     </div>
   );
 }

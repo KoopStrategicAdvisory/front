@@ -1,20 +1,13 @@
 import React from 'react';
-
-const baseInputStyle = {
-  background: '#1b263b',
-  color: '#e2e8f0',
-  border: '1px solid rgba(148,163,184,0.35)',
-  borderRadius: 8,
-  padding: '8px 10px',
-};
+import './EditFormKit.css';
 
 export function EditForm({ children, style }) {
-  return <div style={{ display: 'grid', gap: 10, ...(style || {}) }}>{children}</div>;
+  return <div style={{ display: 'grid', gap: 16, ...(style || {}) }}>{children}</div>;
 }
 
 export function EditRow({ children, cols = 2, style }) {
   return (
-    <div style={{ display: 'grid', gap: 10, gridTemplateColumns: `repeat(${cols}, 1fr)`, ...(style || {}) }}>
+    <div className="kf-row" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)`, ...(style || {}) }}>
       {children}
     </div>
   );
@@ -22,8 +15,8 @@ export function EditRow({ children, cols = 2, style }) {
 
 export function EditField({ label, type = 'text', value, onChange, placeholder, readOnly, inputProps, children }) {
   return (
-    <label style={{ display: 'grid', gap: 6 }}>
-      {label != null && <span>{label}</span>}
+    <label className="kf-field">
+      {label != null && <span className="kf-label">{label}</span>}
       {children ? (
         children
       ) : (
@@ -33,7 +26,7 @@ export function EditField({ label, type = 'text', value, onChange, placeholder, 
           onChange={onChange}
           placeholder={placeholder}
           readOnly={readOnly}
-          style={baseInputStyle}
+          className="kf-input"
           {...(inputProps || {})}
         />
       )}
@@ -43,14 +36,14 @@ export function EditField({ label, type = 'text', value, onChange, placeholder, 
 
 export function EditTextArea({ label, value, onChange, rows = 3, placeholder, textareaProps }) {
   return (
-    <label style={{ display: 'grid', gap: 6 }}>
-      {label != null && <span>{label}</span>}
+    <label className="kf-field">
+      {label != null && <span className="kf-label">{label}</span>}
       <textarea
         rows={rows}
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        style={{ ...baseInputStyle, resize: 'vertical' }}
+        className="kf-textarea"
         {...(textareaProps || {})}
       />
     </label>
@@ -59,14 +52,9 @@ export function EditTextArea({ label, value, onChange, rows = 3, placeholder, te
 
 export function EditSelect({ label, value, onChange, options = [], placeholder = 'Seleccione una opción', selectProps }) {
   return (
-    <label style={{ display: 'grid', gap: 6 }}>
-      {label != null && <span>{label}</span>}
-      <select
-        value={value}
-        onChange={onChange}
-        style={baseInputStyle}
-        {...(selectProps || {})}
-      >
+    <label className="kf-field">
+      {label != null && <span className="kf-label">{label}</span>}
+      <select value={value} onChange={onChange} className="kf-select" {...(selectProps || {})}>
         {placeholder && (
           <option value="" disabled>
             {placeholder}
@@ -82,3 +70,34 @@ export function EditSelect({ label, value, onChange, options = [], placeholder =
   );
 }
 
+// Casilla de verificación con estilo consistente (usada por "Es hito preclusivo",
+// "Visible para el cliente", etc. — antes cada pantalla la estilaba a mano).
+export function EditCheckbox({ label, checked, onChange }) {
+  return (
+    <label className="kf-checkbox-label">
+      <input type="checkbox" checked={!!checked} onChange={onChange} />
+      {label}
+    </label>
+  );
+}
+
+// Zona de carga de archivo con estilo de "dropzone" en vez del input nativo feo.
+export function EditFileField({ label, file, onChange, accept, helperText = 'Haz clic o arrastra un archivo aquí' }) {
+  return (
+    <label className="kf-field">
+      {label != null && <span className="kf-label">{label}</span>}
+      <div className="kf-file-drop">
+        <span className="kf-file-drop-icon">📎</span>
+        <span className="kf-file-drop-text">
+          <strong>Selecciona un archivo</strong> — {helperText}
+        </span>
+        <input type="file" accept={accept} onChange={onChange} />
+      </div>
+      {file && (
+        <span className="kf-file-selected">
+          📄 {file.name} · {file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} KB` : `${(file.size / (1024 * 1024)).toFixed(1)} MB`}
+        </span>
+      )}
+    </label>
+  );
+}
