@@ -4,9 +4,11 @@ import { useExpedientes } from '../../../hooks/useExpedientes';
 import { useActuaciones } from '../../../hooks/useActuaciones';
 import { useAudiencias } from '../../../hooks/useAudiencias';
 import { useTareasKoop } from '../../../hooks/useTareasKoop';
+import { useDocumentosExpediente } from '../../../hooks/useDocumentosExpediente';
+import { getDownloadUrl } from '../../../api/documentosExpediente';
 import { useAccess } from '../../../context/AccessContext';
 import { createEtapa, updateEtapa, deleteEtapa } from '../../../api/expedientes';
-import { listEstadosTarea, listPrioridades, listTiposActuacion, listEstadosEtapa, listEtapasProcesales } from '../../../api/catalogos';
+import { listEstadosTarea, listPrioridades, listTiposActuacion, listEstadosEtapa, listEtapasProcesales, listTiposDocumento } from '../../../api/catalogos';
 import { EditForm, EditRow, EditField, EditTextArea, EditSelect } from '../../../components/common/EditFormKit';
 import '../../../styles/dashboard.css';
 import '../../../styles/mi-expediente.css';
@@ -590,8 +592,145 @@ function DeleteModal({ show, onClose, onConfirm, label }) {
   );
 }
 
+// ─── Documentos Tab ───────────────────────────────────────────────────────────
+const EMPTY_DOCUMENTO = { file: null, titulo: '', id_tipo_documento: '', descripcion: '', visibilidad_cliente: false };
+
+function formatBytes(bytes) {
+  if (bytes == null) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DocumentoForm({ f, onF, tipoDocumentoOpts }) {
+  return (
+    <EditForm style={{ marginTop: 8 }}>
+      <div>
+        <label style={{ display: 'block', fontSize: 13, color: '#9fb3cc', marginBottom: 6 }}>Archivo *</label>
+        <input
+          type="file"
+          onChange={(e) => onF({ ...f, file: e.target.files?.[0] || null, titulo: f.titulo || e.target.files?.[0]?.name || '' })}
+          style={{ width: '100%', padding: '10px', background: '#1e2a3a', border: `1px solid ${borderCol}`, borderRadius: 8, color: '#e2e8f0', fontSize: 13 }}
+        />
+        {f.file && <div style={{ fontSize: 12, color: '#67e8f9', marginTop: 6 }}>{f.file.name} · {formatBytes(f.file.size)}</div>}
+      </div>
+      <EditField label="Título" value={f.titulo} onChange={(e) => onF({ ...f, titulo: e.target.value })} placeholder="Auto admisorio - notificación" />
+      <EditSelect label="Tipo de documento *" value={f.id_tipo_documento} onChange={(e) => onF({ ...f, id_tipo_documento: e.target.value })} options={tipoDocumentoOpts} />
+      <EditTextArea label="Descripción" value={f.descripcion} onChange={(e) => onF({ ...f, descripcion: e.target.value })} rows={2} placeholder="Notas sobre el documento..." />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#9fb3cc', cursor: 'pointer', marginTop: 4 }}>
+        <input type="checkbox" checked={!!f.visibilidad_cliente} onChange={(e) => onF({ ...f, visibilidad_cliente: e.target.checked })} />
+        Visible para el cliente
+      </label>
+    </EditForm>
+  );
+}
+
+function DocumentosTab({ expedienteId, canEdit }) {
+  const { documentos, loading, error, fetchDocumentos, createDocumento, deleteDocumento } = useDocumentosExpediente();
+  const [tiposDocumento, setTiposDocumento] = useState([]);
+  const [showUpload, setShowUpload] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [target, setTarget] = useState(null);
+  const [form, setForm] = useState(EMPTY_DOCUMENTO);
+  const [uploading, setUploading] = useState(false);
+  const [notice, setNotice] = useState(null);
+
+  useEffect(() => {
+    fetchDocumentos({ id_expediente: expedienteId });
+    listTiposDocumento().then(setTiposDocumento).catch(() => {});
+  }, [expedienteId]);
+
+  const msg = (text, type = 'success') => { setNotice({ text, type }); setTimeout(() => setNotice(null), 4000); };
+  const tipoDocumentoOpts = [{ value: '', label: 'Seleccione tipo...' }, ...tiposDocumento.map((t) => ({ value: String(t.id), label: t.nombre }))];
+
+  const handleUpload = async () => {
+    if (!form.file) { msg('Selecciona un archivo', 'danger'); return; }
+    if (!form.id_tipo_documento) { msg('El tipo de documento es obligatorio', 'danger'); return; }
+    setUploading(true);
+    try {
+      await createDocumento({
+        file: form.file,
+        id_expediente: expedienteId,
+        id_tipo_documento: Number(form.id_tipo_documento),
+        titulo: form.titulo || undefined,
+        descripcion: form.descripcion || undefined,
+        visibilidad_cliente: form.visibilidad_cliente,
+      });
+      setShowUpload(false); setForm(EMPTY_DOCUMENTO);
+      msg('Documento subido exitosamente');
+    } catch (e) {
+      msg(e?.response?.data?.message || e?.message || 'Error al subir documento', 'danger');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownload = async (doc) => {
+    try {
+      const { url } = await getDownloadUrl(doc.id);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      msg(e?.response?.data?.message || e?.message || 'No se pudo generar el enlace de descarga', 'danger');
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await deleteDocumento(target.id);
+      setShowDelete(false);
+      msg('Documento eliminado', 'danger');
+    } catch (e) { msg(e?.message || 'Error', 'danger'); }
+  };
+
+  return (
+    <div>
+      {notice && <TabNotice notice={notice} />}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        {canEdit && <button className="btn btn-primary" onClick={() => { setForm(EMPTY_DOCUMENTO); setShowUpload(true); }} style={{ fontSize: 13, padding: '8px 16px' }}>📤 Subir Documento</button>}
+      </div>
+      {error && <div style={{ color: '#fca5a5', fontSize: 13, marginBottom: 12 }}>⚠️ {error}</div>}
+      {loading && documentos.length === 0 ? (
+        <div style={{ color: '#9fb3cc', textAlign: 'center', padding: 40 }}>Cargando documentos...</div>
+      ) : documentos.length === 0 ? (
+        <div style={{ color: '#9fb3cc', textAlign: 'center', padding: 40 }}>No hay documentos cargados para este expediente.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {documentos.map((d) => (
+            <div key={d.id} style={{ background: 'linear-gradient(135deg, #2a3a51, #1e2a3a)', border: `1px solid ${borderCol}`, borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>📄</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0' }}>{d.titulo || d.nombre_archivo}</span>
+                  {d.nombre_tipo_documento && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'rgba(79,209,197,0.1)', color: '#67e8f9', border: '1px solid rgba(79,209,197,0.2)' }}>{d.nombre_tipo_documento}</span>}
+                  {d.visibilidad_cliente && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'rgba(52,211,153,0.1)', color: '#34d399', border: '1px solid rgba(52,211,153,0.25)' }}>Visible cliente</span>}
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>
+                  {d.nombre_archivo} · {formatBytes(d.tamano_bytes)} · 📅 {fmtDate(d.fecha_carga)}
+                </div>
+                {d.descripcion && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>{d.descripcion}</div>}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <button onClick={() => handleDownload(d)} style={{ padding: '4px 10px', background: '#4fd1c5', border: 'none', borderRadius: 6, color: 'white', fontSize: 11, cursor: 'pointer' }}>⬇️ Descargar</button>
+                {canEdit && <button onClick={() => { setTarget(d); setShowDelete(true); }} style={{ padding: '4px 8px', background: '#ef4444', border: 'none', borderRadius: 6, color: 'white', fontSize: 11, cursor: 'pointer' }}>🗑️</button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <Modal show={showUpload} onClose={() => setShowUpload(false)} title="📤 Subir Documento">
+        <DocumentoForm f={form} onF={setForm} tipoDocumentoOpts={tipoDocumentoOpts} />
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
+          <button className="btn btn-secondary" onClick={() => setShowUpload(false)} style={{ padding: '10px 20px' }} disabled={uploading}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleUpload} style={{ padding: '10px 20px' }} disabled={uploading}>{uploading ? 'Subiendo...' : 'Subir'}</button>
+        </div>
+      </Modal>
+      <DeleteModal show={showDelete && !!target} onClose={() => setShowDelete(false)} onConfirm={handleDelete} label={target?.titulo || target?.nombre_archivo} />
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
-const TABS = ['Actuaciones', 'Audiencias', 'Etapas', 'Tareas'];
+const TABS = ['Actuaciones', 'Audiencias', 'Etapas', 'Tareas', 'Documentos'];
 
 export default function ExpedienteDetalle() {
   const { id } = useParams();
@@ -668,6 +807,7 @@ export default function ExpedienteDetalle() {
             {activeTab === 'Audiencias' && <AudienciasTab expedienteId={id} canEdit={canEdit} />}
             {activeTab === 'Etapas' && <EtapasTab expedienteId={id} canEdit={canEdit} />}
             {activeTab === 'Tareas' && <TareasTab expedienteId={id} canEdit={canEdit} />}
+            {activeTab === 'Documentos' && <DocumentosTab expedienteId={id} canEdit={canEdit} />}
           </>
         ) : null}
       </div>
