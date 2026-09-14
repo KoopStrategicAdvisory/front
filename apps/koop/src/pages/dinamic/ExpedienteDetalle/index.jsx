@@ -6,6 +6,7 @@ import { useAudiencias } from '../../../hooks/useAudiencias';
 import { useTareasKoop } from '../../../hooks/useTareasKoop';
 import { useAccess } from '../../../context/AccessContext';
 import { createEtapa, updateEtapa, deleteEtapa } from '../../../api/expedientes';
+import { listEstadosTarea, listPrioridades, listTiposActuacion, listEstadosEtapa, listEtapasProcesales } from '../../../api/catalogos';
 import { EditForm, EditRow, EditField, EditTextArea, EditSelect } from '../../../components/common/EditFormKit';
 import '../../../styles/dashboard.css';
 import '../../../styles/mi-expediente.css';
@@ -18,10 +19,36 @@ function fmtDate(iso) {
 }
 
 // ─── Actuaciones Tab ──────────────────────────────────────────────────────────
-const EMPTY_ACTUACION = { TITULO: '', DESCRIPCION: '', FECHA: '', AUTORIDAD_EMITE: '', ES_HITO: false };
+// Reescrito: usaba campos SCREAMING_SNAKE_CASE / _id de una version anterior del
+// backend (Mongo). id_tipo_actuacion es NOT NULL en el esquema y no tenia campo
+// en el formulario.
+const EMPTY_ACTUACION = { titulo: '', descripcion: '', fecha: '', autoridad_emite: '', id_tipo_actuacion: '', es_hito: false };
+
+// Definido fuera del componente de la pestaña a proposito: si se define adentro,
+// React lo trata como un tipo de componente nuevo en cada render del padre
+// (cada setForm) y desmonta/remonta el formulario completo -> se pierde el foco
+// en cada tecla. Mismo fix aplicado a AudienciaForm/EtapaForm/TareaForm abajo.
+function ActuacionForm({ f, onF, tipoActuacionOpts }) {
+  return (
+    <EditForm style={{ marginTop: 8 }}>
+      <EditField label="Título *" value={f.titulo} onChange={(e) => onF({ ...f, titulo: e.target.value })} placeholder="Auto admisorio de la demanda" />
+      <EditRow cols={2}>
+        <EditField label="Fecha *" type="date" value={f.fecha} onChange={(e) => onF({ ...f, fecha: e.target.value })} />
+        <EditSelect label="Tipo de actuación *" value={f.id_tipo_actuacion} onChange={(e) => onF({ ...f, id_tipo_actuacion: e.target.value })} options={tipoActuacionOpts} />
+      </EditRow>
+      <EditField label="Autoridad que emite" value={f.autoridad_emite} onChange={(e) => onF({ ...f, autoridad_emite: e.target.value })} placeholder="Juzgado 5 Laboral" />
+      <EditTextArea label="Descripción" value={f.descripcion} onChange={(e) => onF({ ...f, descripcion: e.target.value })} rows={3} placeholder="Descripción detallada..." />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#9fb3cc', cursor: 'pointer', marginTop: 4 }}>
+        <input type="checkbox" checked={!!f.es_hito} onChange={(e) => onF({ ...f, es_hito: e.target.checked })} />
+        Es hito procesal
+      </label>
+    </EditForm>
+  );
+}
 
 function ActuacionesTab({ expedienteId, canEdit }) {
   const { actuaciones, loading, error, fetchActuaciones, createActuacion, updateActuacion, deleteActuacion } = useActuaciones(expedienteId);
+  const [tiposActuacion, setTiposActuacion] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -29,36 +56,37 @@ function ActuacionesTab({ expedienteId, canEdit }) {
   const [form, setForm] = useState(EMPTY_ACTUACION);
   const [notice, setNotice] = useState(null);
 
-  useEffect(() => { fetchActuaciones(); }, []);
+  useEffect(() => {
+    fetchActuaciones();
+    listTiposActuacion().then(setTiposActuacion).catch(() => {});
+  }, []);
 
   const msg = (text, type = 'success') => { setNotice({ text, type }); setTimeout(() => setNotice(null), 3500); };
-  const openEdit = (a) => { setTarget(a); setForm({ TITULO: a.TITULO || '', DESCRIPCION: a.DESCRIPCION || '', FECHA: a.FECHA?.slice(0, 10) || '', AUTORIDAD_EMITE: a.AUTORIDAD_EMITE || '', ES_HITO: !!a.ES_HITO }); setShowEdit(true); };
+  const openEdit = (a) => { setTarget(a); setForm({ titulo: a.titulo || '', descripcion: a.descripcion || '', fecha: a.fecha?.slice(0, 10) || '', autoridad_emite: a.autoridad_emite || '', id_tipo_actuacion: a.id_tipo_actuacion != null ? String(a.id_tipo_actuacion) : '', es_hito: !!a.es_hito }); setShowEdit(true); };
+
+  const tipoActuacionOpts = [{ value: '', label: 'Seleccione tipo...' }, ...tiposActuacion.map((t) => ({ value: String(t.id), label: t.nombre }))];
+
+  const toPayload = (f) => ({
+    titulo: f.titulo.trim(),
+    descripcion: f.descripcion.trim() || undefined,
+    fecha: f.fecha || undefined,
+    autoridad_emite: f.autoridad_emite.trim() || undefined,
+    id_tipo_actuacion: f.id_tipo_actuacion ? Number(f.id_tipo_actuacion) : undefined,
+    es_hito: f.es_hito,
+  });
 
   const handleCreate = async () => {
-    if (!form.TITULO.trim()) { msg('El título es obligatorio', 'danger'); return; }
-    try { await createActuacion({ ...form, ID_EXPEDIENTE: expedienteId }); setShowCreate(false); setForm(EMPTY_ACTUACION); msg('Actuación registrada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
+    if (!form.titulo.trim()) { msg('El título es obligatorio', 'danger'); return; }
+    if (!form.fecha) { msg('La fecha es obligatoria', 'danger'); return; }
+    if (!form.id_tipo_actuacion) { msg('El tipo de actuación es obligatorio', 'danger'); return; }
+    try { await createActuacion({ ...toPayload(form), id_expediente: expedienteId }); setShowCreate(false); setForm(EMPTY_ACTUACION); msg('Actuación registrada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
   };
   const handleEdit = async () => {
-    try { await updateActuacion(target._id, form); setShowEdit(false); msg('Actuación actualizada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
+    try { await updateActuacion(target.id, toPayload(form)); setShowEdit(false); msg('Actuación actualizada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
   };
   const handleDelete = async () => {
-    try { await deleteActuacion(target._id); setShowDelete(false); msg('Actuación eliminada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
+    try { await deleteActuacion(target.id); setShowDelete(false); msg('Actuación eliminada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
   };
-
-  const ActuacionForm = ({ f, onF }) => (
-    <EditForm style={{ marginTop: 8 }}>
-      <EditField label="Título *" value={f.TITULO} onChange={(e) => onF({ ...f, TITULO: e.target.value })} placeholder="Auto admisorio de la demanda" />
-      <EditRow cols={2}>
-        <EditField label="Fecha" type="date" value={f.FECHA} onChange={(e) => onF({ ...f, FECHA: e.target.value })} />
-        <EditField label="Autoridad que emite" value={f.AUTORIDAD_EMITE} onChange={(e) => onF({ ...f, AUTORIDAD_EMITE: e.target.value })} placeholder="Juzgado 5 Laboral" />
-      </EditRow>
-      <EditTextArea label="Descripción" value={f.DESCRIPCION} onChange={(e) => onF({ ...f, DESCRIPCION: e.target.value })} rows={3} placeholder="Descripción detallada..." />
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#9fb3cc', cursor: 'pointer', marginTop: 4 }}>
-        <input type="checkbox" checked={!!f.ES_HITO} onChange={(e) => onF({ ...f, ES_HITO: e.target.checked })} />
-        Es hito procesal
-      </label>
-    </EditForm>
-  );
 
   return (
     <div>
@@ -74,17 +102,18 @@ function ActuacionesTab({ expedienteId, canEdit }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {actuaciones.map((a) => (
-            <div key={a._id} style={{ background: 'linear-gradient(135deg, #2a3a51, #1e2a3a)', border: `1px solid ${borderCol}`, borderRadius: 10, padding: 16 }}>
+            <div key={a.id} style={{ background: 'linear-gradient(135deg, #2a3a51, #1e2a3a)', border: `1px solid ${borderCol}`, borderRadius: 10, padding: 16 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#e2e8f0' }}>{a.TITULO || 'Sin título'}</h4>
-                    {a.ES_HITO && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'rgba(251,191,36,0.15)', color: '#fde68a', border: '1px solid rgba(251,191,36,0.3)' }}>HITO</span>}
+                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#e2e8f0' }}>{a.titulo || 'Sin título'}</h4>
+                    {a.es_hito && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'rgba(251,191,36,0.15)', color: '#fde68a', border: '1px solid rgba(251,191,36,0.3)' }}>HITO</span>}
                   </div>
-                  {a.DESCRIPCION && <p style={{ margin: '0 0 8px', fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>{a.DESCRIPCION}</p>}
+                  {a.descripcion && <p style={{ margin: '0 0 8px', fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>{a.descripcion}</p>}
                   <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#64748b' }}>
-                    {a.FECHA && <span>📅 {fmtDate(a.FECHA)}</span>}
-                    {a.AUTORIDAD_EMITE && <span>🏛️ {a.AUTORIDAD_EMITE}</span>}
+                    {a.fecha && <span>📅 {fmtDate(a.fecha)}</span>}
+                    {a.autoridad_emite && <span>🏛️ {a.autoridad_emite}</span>}
+                    {a.nombre_tipo_actuacion && <span>{a.nombre_tipo_actuacion}</span>}
                   </div>
                 </div>
                 {canEdit && (
@@ -99,23 +128,47 @@ function ActuacionesTab({ expedienteId, canEdit }) {
         </div>
       )}
       <Modal show={showCreate} onClose={() => setShowCreate(false)} title="➕ Nueva Actuación">
-        <ActuacionForm f={form} onF={setForm} />
+        <ActuacionForm f={form} onF={setForm} tipoActuacionOpts={tipoActuacionOpts} />
         <ModalFooter onCancel={() => setShowCreate(false)} onConfirm={handleCreate} confirmLabel="Registrar" />
       </Modal>
       <Modal show={showEdit && !!target} onClose={() => setShowEdit(false)} title="✏️ Editar Actuación">
-        <ActuacionForm f={form} onF={setForm} />
+        <ActuacionForm f={form} onF={setForm} tipoActuacionOpts={tipoActuacionOpts} />
         <ModalFooter onCancel={() => setShowEdit(false)} onConfirm={handleEdit} confirmLabel="Guardar" />
       </Modal>
-      <DeleteModal show={showDelete && !!target} onClose={() => setShowDelete(false)} onConfirm={handleDelete} label={target?.TITULO} />
+      <DeleteModal show={showDelete && !!target} onClose={() => setShowDelete(false)} onConfirm={handleDelete} label={target?.titulo} />
     </div>
   );
 }
 
 // ─── Audiencias Tab ───────────────────────────────────────────────────────────
-const EMPTY_AUDIENCIA = { TIPO_AUDIENCIA: '', FECHA_PROGRAMADA: '', HORA: '', MODALIDAD: 'presencial', JUZGADO_O_AUTORIDAD: '', ENLACE_VIRTUAL: '', ESTADO: 'programada', RESULTADO: '' };
+// Reescrito: campos SCREAMING_SNAKE_CASE/_id obsoletos. Ademas 'fecha_programada'
+// es un timestamptz unico en el esquema (no hay columna 'hora' separada, y
+// 'HORA' no tenia donde guardarse); se combinan fecha+hora al enviar. El check
+// constraint de 'estado' es ('programada','celebrada','aplazada','cancelada') —
+// el formulario usaba 'realizada', que la base de datos habria rechazado.
+const EMPTY_AUDIENCIA = { tipo_audiencia: '', fecha_programada: '', hora: '', modalidad: 'presencial', juzgado_o_autoridad: '', enlace_virtual: '', estado: 'programada', resultado: '' };
 const MODALIDAD_OPTS = [{ value: 'presencial', label: 'Presencial' }, { value: 'virtual', label: 'Virtual' }, { value: 'mixta', label: 'Mixta' }];
-const ESTADO_AUD_OPTS = [{ value: 'programada', label: 'Programada' }, { value: 'realizada', label: 'Realizada' }, { value: 'aplazada', label: 'Aplazada' }, { value: 'cancelada', label: 'Cancelada' }];
-const AUD_COLOR = { programada: '#60a5fa', realizada: '#34d399', aplazada: '#fbbf24', cancelada: '#f87171' };
+const ESTADO_AUD_OPTS = [{ value: 'programada', label: 'Programada' }, { value: 'celebrada', label: 'Celebrada' }, { value: 'aplazada', label: 'Aplazada' }, { value: 'cancelada', label: 'Cancelada' }];
+const AUD_COLOR = { programada: '#60a5fa', celebrada: '#34d399', aplazada: '#fbbf24', cancelada: '#f87171' };
+
+function AudienciaForm({ f, onF }) {
+  return (
+    <EditForm style={{ marginTop: 8 }}>
+      <EditField label="Tipo de audiencia *" value={f.tipo_audiencia} onChange={(e) => onF({ ...f, tipo_audiencia: e.target.value })} placeholder="Audiencia de Conciliación" />
+      <EditRow cols={2}>
+        <EditField label="Fecha programada *" type="date" value={f.fecha_programada} onChange={(e) => onF({ ...f, fecha_programada: e.target.value })} />
+        <EditField label="Hora" type="time" value={f.hora} onChange={(e) => onF({ ...f, hora: e.target.value })} />
+      </EditRow>
+      <EditRow cols={2}>
+        <EditSelect label="Modalidad" value={f.modalidad} onChange={(e) => onF({ ...f, modalidad: e.target.value })} options={MODALIDAD_OPTS} />
+        <EditSelect label="Estado" value={f.estado} onChange={(e) => onF({ ...f, estado: e.target.value })} options={ESTADO_AUD_OPTS} />
+      </EditRow>
+      <EditField label="Juzgado / Autoridad" value={f.juzgado_o_autoridad} onChange={(e) => onF({ ...f, juzgado_o_autoridad: e.target.value })} placeholder="Juzgado 5 Laboral del Circuito" />
+      {f.modalidad !== 'presencial' && <EditField label="Enlace virtual" value={f.enlace_virtual} onChange={(e) => onF({ ...f, enlace_virtual: e.target.value })} placeholder="https://meet.google.com/..." />}
+      {f.estado === 'celebrada' && <EditField label="Resultado" value={f.resultado} onChange={(e) => onF({ ...f, resultado: e.target.value })} placeholder="Conciliación parcial alcanzada..." />}
+    </EditForm>
+  );
+}
 
 function AudienciasTab({ expedienteId, canEdit }) {
   const { audiencias, loading, error, fetchAudiencias, createAudiencia, updateAudiencia, deleteAudiencia } = useAudiencias(expedienteId);
@@ -129,35 +182,34 @@ function AudienciasTab({ expedienteId, canEdit }) {
   useEffect(() => { fetchAudiencias(); }, []);
 
   const msg = (text, type = 'success') => { setNotice({ text, type }); setTimeout(() => setNotice(null), 3500); };
-  const openEdit = (a) => { setTarget(a); setForm({ TIPO_AUDIENCIA: a.TIPO_AUDIENCIA || '', FECHA_PROGRAMADA: a.FECHA_PROGRAMADA?.slice(0, 10) || '', HORA: a.HORA || '', MODALIDAD: a.MODALIDAD || 'presencial', JUZGADO_O_AUTORIDAD: a.JUZGADO_O_AUTORIDAD || '', ENLACE_VIRTUAL: a.ENLACE_VIRTUAL || '', ESTADO: a.ESTADO || 'programada', RESULTADO: a.RESULTADO || '' }); setShowEdit(true); };
+  const openEdit = (a) => {
+    const [datePart, timePart] = (a.fecha_programada || '').split('T');
+    setTarget(a);
+    setForm({ tipo_audiencia: a.tipo_audiencia || '', fecha_programada: datePart || '', hora: timePart ? timePart.slice(0, 5) : '', modalidad: a.modalidad || 'presencial', juzgado_o_autoridad: a.juzgado_o_autoridad || '', enlace_virtual: a.enlace_virtual || '', estado: a.estado || 'programada', resultado: a.resultado || '' });
+    setShowEdit(true);
+  };
+
+  const toPayload = (f) => ({
+    tipo_audiencia: f.tipo_audiencia.trim(),
+    fecha_programada: f.fecha_programada ? `${f.fecha_programada}T${f.hora || '00:00'}:00` : undefined,
+    modalidad: f.modalidad || undefined,
+    juzgado_o_autoridad: f.juzgado_o_autoridad.trim() || undefined,
+    enlace_virtual: f.modalidad !== 'presencial' ? (f.enlace_virtual.trim() || undefined) : undefined,
+    estado: f.estado || undefined,
+    resultado: f.estado === 'celebrada' ? (f.resultado.trim() || undefined) : undefined,
+  });
 
   const handleCreate = async () => {
-    if (!form.TIPO_AUDIENCIA.trim()) { msg('El tipo de audiencia es obligatorio', 'danger'); return; }
-    try { await createAudiencia({ ...form, ID_EXPEDIENTE: expedienteId }); setShowCreate(false); setForm(EMPTY_AUDIENCIA); msg('Audiencia registrada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
+    if (!form.tipo_audiencia.trim()) { msg('El tipo de audiencia es obligatorio', 'danger'); return; }
+    if (!form.fecha_programada) { msg('La fecha programada es obligatoria', 'danger'); return; }
+    try { await createAudiencia({ ...toPayload(form), id_expediente: expedienteId }); setShowCreate(false); setForm(EMPTY_AUDIENCIA); msg('Audiencia registrada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
   };
   const handleEdit = async () => {
-    try { await updateAudiencia(target._id, form); setShowEdit(false); msg('Audiencia actualizada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
+    try { await updateAudiencia(target.id, toPayload(form)); setShowEdit(false); msg('Audiencia actualizada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
   };
   const handleDelete = async () => {
-    try { await deleteAudiencia(target._id); setShowDelete(false); msg('Audiencia eliminada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
+    try { await deleteAudiencia(target.id); setShowDelete(false); msg('Audiencia eliminada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
   };
-
-  const AudienciaForm = ({ f, onF }) => (
-    <EditForm style={{ marginTop: 8 }}>
-      <EditField label="Tipo de audiencia *" value={f.TIPO_AUDIENCIA} onChange={(e) => onF({ ...f, TIPO_AUDIENCIA: e.target.value })} placeholder="Audiencia de Conciliación" />
-      <EditRow cols={2}>
-        <EditField label="Fecha programada" type="date" value={f.FECHA_PROGRAMADA} onChange={(e) => onF({ ...f, FECHA_PROGRAMADA: e.target.value })} />
-        <EditField label="Hora" type="time" value={f.HORA} onChange={(e) => onF({ ...f, HORA: e.target.value })} />
-      </EditRow>
-      <EditRow cols={2}>
-        <EditSelect label="Modalidad" value={f.MODALIDAD} onChange={(e) => onF({ ...f, MODALIDAD: e.target.value })} options={MODALIDAD_OPTS} />
-        <EditSelect label="Estado" value={f.ESTADO} onChange={(e) => onF({ ...f, ESTADO: e.target.value })} options={ESTADO_AUD_OPTS} />
-      </EditRow>
-      <EditField label="Juzgado / Autoridad" value={f.JUZGADO_O_AUTORIDAD} onChange={(e) => onF({ ...f, JUZGADO_O_AUTORIDAD: e.target.value })} placeholder="Juzgado 5 Laboral del Circuito" />
-      {f.MODALIDAD !== 'presencial' && <EditField label="Enlace virtual" value={f.ENLACE_VIRTUAL} onChange={(e) => onF({ ...f, ENLACE_VIRTUAL: e.target.value })} placeholder="https://meet.google.com/..." />}
-      {f.ESTADO === 'realizada' && <EditField label="Resultado" value={f.RESULTADO} onChange={(e) => onF({ ...f, RESULTADO: e.target.value })} placeholder="Conciliación parcial alcanzada..." />}
-    </EditForm>
-  );
 
   return (
     <div>
@@ -173,18 +225,18 @@ function AudienciasTab({ expedienteId, canEdit }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {audiencias.map((a) => (
-            <div key={a._id} style={{ background: 'linear-gradient(135deg, #2a3a51, #1e2a3a)', border: `1px solid ${borderCol}`, borderRadius: 10, padding: 16 }}>
+            <div key={a.id} style={{ background: 'linear-gradient(135deg, #2a3a51, #1e2a3a)', border: `1px solid ${borderCol}`, borderRadius: 10, padding: 16 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#e2e8f0' }}>{a.TIPO_AUDIENCIA || 'Sin tipo'}</h4>
-                    {a.ESTADO && <Badge color={AUD_COLOR[a.ESTADO]}>{a.ESTADO}</Badge>}
-                    {a.MODALIDAD && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'rgba(156,163,175,0.1)', color: '#9ca3af' }}>{a.MODALIDAD}</span>}
+                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#e2e8f0' }}>{a.tipo_audiencia || 'Sin tipo'}</h4>
+                    {a.estado && <Badge color={AUD_COLOR[a.estado]}>{a.estado}</Badge>}
+                    {a.modalidad && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'rgba(156,163,175,0.1)', color: '#9ca3af' }}>{a.modalidad}</span>}
                   </div>
                   <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
-                    {a.FECHA_PROGRAMADA && <span>📅 {fmtDate(a.FECHA_PROGRAMADA)}{a.HORA ? ` ${a.HORA}` : ''}</span>}
-                    {a.JUZGADO_O_AUTORIDAD && <span>🏛️ {a.JUZGADO_O_AUTORIDAD}</span>}
-                    {a.RESULTADO && <span style={{ color: '#34d399' }}>✔ {a.RESULTADO}</span>}
+                    {a.fecha_programada && <span>📅 {fmtDate(a.fecha_programada)}</span>}
+                    {a.juzgado_o_autoridad && <span>🏛️ {a.juzgado_o_autoridad}</span>}
+                    {a.resultado && <span style={{ color: '#34d399' }}>✔ {a.resultado}</span>}
                   </div>
                 </div>
                 {canEdit && (
@@ -206,17 +258,40 @@ function AudienciasTab({ expedienteId, canEdit }) {
         <AudienciaForm f={form} onF={setForm} />
         <ModalFooter onCancel={() => setShowEdit(false)} onConfirm={handleEdit} confirmLabel="Guardar" />
       </Modal>
-      <DeleteModal show={showDelete && !!target} onClose={() => setShowDelete(false)} onConfirm={handleDelete} label={target?.TIPO_AUDIENCIA} />
+      <DeleteModal show={showDelete && !!target} onClose={() => setShowDelete(false)} onConfirm={handleDelete} label={target?.tipo_audiencia} />
     </div>
   );
 }
 
 // ─── Etapas Tab ───────────────────────────────────────────────────────────────
-const EMPTY_ETAPA = { NOMBRE_ETAPA: '', ORDEN: '', FECHA_INICIO: '', FECHA_VENCIMIENTO: '', OBSERVACIONES: '' };
+// Reescrito: 'NOMBRE_ETAPA' no es un campo propio de expediente_etapas, viene del
+// catalogo etapas_procesales (columna id_etapa, se muestra como nombre_etapa en
+// el join del backend); 'orden' e 'id_estado_etapa' son NOT NULL y no tenian
+// campo en el formulario.
+const EMPTY_ETAPA = { id_etapa: '', id_estado_etapa: '', orden: '', fecha_inicio: '', fecha_vencimiento: '', observaciones: '' };
+
+function EtapaForm({ f, onF, etapaOpts, estadoEtapaOpts }) {
+  return (
+    <EditForm style={{ marginTop: 8 }}>
+      <EditRow cols={2}>
+        <EditSelect label="Etapa" value={f.id_etapa} onChange={(e) => onF({ ...f, id_etapa: e.target.value })} options={etapaOpts} />
+        <EditField label="Orden *" type="number" value={f.orden} onChange={(e) => onF({ ...f, orden: e.target.value })} placeholder="1" />
+      </EditRow>
+      <EditSelect label="Estado *" value={f.id_estado_etapa} onChange={(e) => onF({ ...f, id_estado_etapa: e.target.value })} options={estadoEtapaOpts} />
+      <EditRow cols={2}>
+        <EditField label="Fecha inicio" type="date" value={f.fecha_inicio} onChange={(e) => onF({ ...f, fecha_inicio: e.target.value })} />
+        <EditField label="Fecha vencimiento" type="date" value={f.fecha_vencimiento} onChange={(e) => onF({ ...f, fecha_vencimiento: e.target.value })} />
+      </EditRow>
+      <EditTextArea label="Observaciones" value={f.observaciones} onChange={(e) => onF({ ...f, observaciones: e.target.value })} rows={2} placeholder="Observaciones opcionales..." />
+    </EditForm>
+  );
+}
 
 function EtapasTab({ expedienteId, canEdit }) {
-  const { etapas, loading: loadingEtapas, fetchEtapas } = useExpedientes();
+  const { fetchEtapas } = useExpedientes();
   const [etapaList, setEtapaList] = useState([]);
+  const [etapasProcesales, setEtapasProcesales] = useState([]);
+  const [estadosEtapa, setEstadosEtapa] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -239,49 +314,57 @@ function EtapasTab({ expedienteId, canEdit }) {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    listEtapasProcesales().then(setEtapasProcesales).catch(() => {});
+    listEstadosEtapa().then(setEstadosEtapa).catch(() => {});
+  }, []);
 
   const msg = (text, type = 'success') => { setNotice({ text, type }); setTimeout(() => setNotice(null), 3500); };
-  const openEdit = (e) => { setTarget(e); setForm({ NOMBRE_ETAPA: e.NOMBRE_ETAPA || '', ORDEN: e.ORDEN ?? '', FECHA_INICIO: e.FECHA_INICIO?.slice(0, 10) || '', FECHA_VENCIMIENTO: e.FECHA_VENCIMIENTO?.slice(0, 10) || '', OBSERVACIONES: e.OBSERVACIONES || '' }); setShowEdit(true); };
+  const openEdit = (e) => { setTarget(e); setForm({ id_etapa: e.id_etapa != null ? String(e.id_etapa) : '', id_estado_etapa: e.id_estado_etapa != null ? String(e.id_estado_etapa) : '', orden: e.orden ?? '', fecha_inicio: e.fecha_inicio?.slice(0, 10) || '', fecha_vencimiento: e.fecha_vencimiento?.slice(0, 10) || '', observaciones: e.observaciones || '' }); setShowEdit(true); };
 
+  const etapaOpts = [{ value: '', label: 'Seleccione etapa...' }, ...etapasProcesales.map((e) => ({ value: String(e.id), label: e.nombre_etapa }))];
+  const estadoEtapaOpts = [{ value: '', label: 'Seleccione estado...' }, ...estadosEtapa.map((e) => ({ value: String(e.id), label: e.nombre }))];
+
+  const toPayload = (f) => ({
+    id_etapa: f.id_etapa ? Number(f.id_etapa) : undefined,
+    id_estado_etapa: f.id_estado_etapa ? Number(f.id_estado_etapa) : undefined,
+    orden: f.orden !== '' ? Number(f.orden) : undefined,
+    fecha_inicio: f.fecha_inicio || undefined,
+    fecha_vencimiento: f.fecha_vencimiento || undefined,
+    observaciones: f.observaciones.trim() || undefined,
+  });
+
+  // create/update en el backend devuelven la fila cruda (INSERT/UPDATE ... RETURNING *),
+  // sin los nombres del catalogo (nombre_etapa, nombre_estado_etapa) que solo trae el
+  // listado (JOIN). Se recarga la lista tras cada cambio para mostrar el nombre real
+  // en vez de "Sin nombre" hasta el proximo refresh manual.
   const handleCreate = async () => {
-    if (!form.NOMBRE_ETAPA.trim()) { msg('El nombre de la etapa es obligatorio', 'danger'); return; }
+    if (!form.orden) { msg('El orden es obligatorio', 'danger'); return; }
+    if (!form.id_estado_etapa) { msg('El estado es obligatorio', 'danger'); return; }
     try {
-      const created = await createEtapa(expedienteId, { ...form, ORDEN: form.ORDEN !== '' ? Number(form.ORDEN) : undefined });
-      setEtapaList((p) => [...p, created]);
+      await createEtapa(expedienteId, toPayload(form));
+      await load();
       setShowCreate(false); setForm(EMPTY_ETAPA); msg('Etapa creada');
     } catch (e) { msg(e?.message || 'Error', 'danger'); }
   };
   const handleEdit = async () => {
     try {
-      const updated = await updateEtapa(expedienteId, target._id, { ...form, ORDEN: form.ORDEN !== '' ? Number(form.ORDEN) : undefined });
-      setEtapaList((p) => p.map((e) => e._id === target._id ? updated : e));
+      await updateEtapa(expedienteId, target.id, toPayload(form));
+      await load();
       setShowEdit(false); msg('Etapa actualizada');
     } catch (e) { msg(e?.message || 'Error', 'danger'); }
   };
   const handleDelete = async () => {
     try {
-      await deleteEtapa(expedienteId, target._id);
-      setEtapaList((p) => p.filter((e) => e._id !== target._id));
+      await deleteEtapa(expedienteId, target.id);
+      setEtapaList((p) => p.filter((e) => e.id !== target.id));
       setShowDelete(false); msg('Etapa eliminada');
     } catch (e) { msg(e?.message || 'Error', 'danger'); }
   };
 
-  const EtapaForm = ({ f, onF }) => (
-    <EditForm style={{ marginTop: 8 }}>
-      <EditRow cols={2}>
-        <EditField label="Nombre de etapa *" value={f.NOMBRE_ETAPA} onChange={(e) => onF({ ...f, NOMBRE_ETAPA: e.target.value })} placeholder="Audiencia de Conciliación" />
-        <EditField label="Orden" type="number" value={f.ORDEN} onChange={(e) => onF({ ...f, ORDEN: e.target.value })} placeholder="1" />
-      </EditRow>
-      <EditRow cols={2}>
-        <EditField label="Fecha inicio" type="date" value={f.FECHA_INICIO} onChange={(e) => onF({ ...f, FECHA_INICIO: e.target.value })} />
-        <EditField label="Fecha vencimiento" type="date" value={f.FECHA_VENCIMIENTO} onChange={(e) => onF({ ...f, FECHA_VENCIMIENTO: e.target.value })} />
-      </EditRow>
-      <EditTextArea label="Observaciones" value={f.OBSERVACIONES} onChange={(e) => onF({ ...f, OBSERVACIONES: e.target.value })} rows={2} placeholder="Observaciones opcionales..." />
-    </EditForm>
-  );
 
-  const sorted = [...etapaList].sort((a, b) => (a.ORDEN ?? 999) - (b.ORDEN ?? 999));
+  const sorted = [...etapaList].sort((a, b) => (a.orden ?? 999) - (b.orden ?? 999));
 
   return (
     <div>
@@ -297,16 +380,16 @@ function EtapasTab({ expedienteId, canEdit }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {sorted.map((e, idx) => (
-            <div key={e._id} style={{ background: 'linear-gradient(135deg, #2a3a51, #1e2a3a)', border: `1px solid ${borderCol}`, borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div key={e.id} style={{ background: 'linear-gradient(135deg, #2a3a51, #1e2a3a)', border: `1px solid ${borderCol}`, borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#a5b4fc', flexShrink: 0 }}>
-                {e.ORDEN ?? idx + 1}
+                {e.orden ?? idx + 1}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', marginBottom: 4 }}>{e.NOMBRE_ETAPA || 'Sin nombre'}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', marginBottom: 4 }}>{e.nombre_etapa || 'Sin nombre'} {e.nombre_estado_etapa && <span style={{ fontWeight: 400, fontSize: 12, color: '#9fb3cc' }}>· {e.nombre_estado_etapa}</span>}</div>
                 <div style={{ display: 'flex', gap: 14, fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
-                  {e.FECHA_INICIO && <span>▶ {fmtDate(e.FECHA_INICIO)}</span>}
-                  {e.FECHA_VENCIMIENTO && <span>⏰ Vence: {fmtDate(e.FECHA_VENCIMIENTO)}</span>}
-                  {e.OBSERVACIONES && <span style={{ color: '#94a3b8' }}>{e.OBSERVACIONES}</span>}
+                  {e.fecha_inicio && <span>▶ {fmtDate(e.fecha_inicio)}</span>}
+                  {e.fecha_vencimiento && <span>⏰ Vence: {fmtDate(e.fecha_vencimiento)}</span>}
+                  {e.observaciones && <span style={{ color: '#94a3b8' }}>{e.observaciones}</span>}
                 </div>
               </div>
               {canEdit && (
@@ -320,23 +403,47 @@ function EtapasTab({ expedienteId, canEdit }) {
         </div>
       )}
       <Modal show={showCreate} onClose={() => setShowCreate(false)} title="➕ Nueva Etapa">
-        <EtapaForm f={form} onF={setForm} />
+        <EtapaForm f={form} onF={setForm} etapaOpts={etapaOpts} estadoEtapaOpts={estadoEtapaOpts} />
         <ModalFooter onCancel={() => setShowCreate(false)} onConfirm={handleCreate} confirmLabel="Crear" />
       </Modal>
       <Modal show={showEdit && !!target} onClose={() => setShowEdit(false)} title="✏️ Editar Etapa">
-        <EtapaForm f={form} onF={setForm} />
+        <EtapaForm f={form} onF={setForm} etapaOpts={etapaOpts} estadoEtapaOpts={estadoEtapaOpts} />
         <ModalFooter onCancel={() => setShowEdit(false)} onConfirm={handleEdit} confirmLabel="Guardar" />
       </Modal>
-      <DeleteModal show={showDelete && !!target} onClose={() => setShowDelete(false)} onConfirm={handleDelete} label={target?.NOMBRE_ETAPA} />
+      <DeleteModal show={showDelete && !!target} onClose={() => setShowDelete(false)} onConfirm={handleDelete} label={target?.nombre_etapa} />
     </div>
   );
 }
 
 // ─── Tareas Tab ───────────────────────────────────────────────────────────────
-const EMPTY_TAREA = { TITULO: '', DESCRIPCION: '', FECHA_LIMITE: '', ID_ESTADO_TAREA: '', ID_PRIORIDAD: '', ES_HITO_PRECLUSIVO: false };
+// Nota: esta pestaña usaba convenciones de una version anterior del backend
+// (Mongo: _id, campos SCREAMING_SNAKE_CASE) y llamaba fetchEstados/fetchPrioridades,
+// que ni siquiera existen en el hook base useTareasKoop (packages/hooks/src/api/koop).
+// Se reescribe contra los campos y catalogos reales.
+const EMPTY_TAREA = { titulo: '', descripcion: '', fecha_limite: '', id_estado_tarea: '', id_prioridad: '', es_hito_preclusivo: false };
+
+function TareaForm({ f, onF, estadoOpts, prioridadOpts }) {
+  return (
+    <EditForm style={{ marginTop: 8 }}>
+      <EditField label="Título *" value={f.titulo} onChange={(e) => onF({ ...f, titulo: e.target.value })} placeholder="Presentar demanda laboral" />
+      <EditRow cols={2}>
+        <EditSelect label="Estado *" value={f.id_estado_tarea} onChange={(e) => onF({ ...f, id_estado_tarea: e.target.value })} options={estadoOpts} />
+        <EditSelect label="Prioridad" value={f.id_prioridad} onChange={(e) => onF({ ...f, id_prioridad: e.target.value })} options={prioridadOpts} />
+      </EditRow>
+      <EditField label="Fecha límite" type="date" value={f.fecha_limite} onChange={(e) => onF({ ...f, fecha_limite: e.target.value })} />
+      <EditTextArea label="Descripción" value={f.descripcion} onChange={(e) => onF({ ...f, descripcion: e.target.value })} rows={2} placeholder="Detalles..." />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#9fb3cc', cursor: 'pointer', marginTop: 4 }}>
+        <input type="checkbox" checked={!!f.es_hito_preclusivo} onChange={(e) => onF({ ...f, es_hito_preclusivo: e.target.checked })} />
+        Es hito preclusivo
+      </label>
+    </EditForm>
+  );
+}
 
 function TareasTab({ expedienteId, canEdit }) {
-  const { tareas, loading, error, estados, prioridades, fetchTareas, createTarea, updateTarea, deleteTarea, fetchEstados, fetchPrioridades } = useTareasKoop({ initialFilters: { ID_EXPEDIENTE: expedienteId } });
+  const { tareas, loading, error, fetchTareas, createTarea, updateTarea, deleteTarea } = useTareasKoop({ initialFilters: { id_expediente: expedienteId } });
+  const [estados, setEstados] = useState([]);
+  const [prioridades, setPrioridades] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -346,45 +453,40 @@ function TareasTab({ expedienteId, canEdit }) {
 
   useEffect(() => {
     fetchTareas();
-    fetchEstados();
-    fetchPrioridades();
+    listEstadosTarea().then(setEstados).catch(() => {});
+    listPrioridades().then(setPrioridades).catch(() => {});
   }, []);
 
   const msg = (text, type = 'success') => { setNotice({ text, type }); setTimeout(() => setNotice(null), 3500); };
-  const openEdit = (t) => { setTarget(t); setForm({ TITULO: t.TITULO || '', DESCRIPCION: t.DESCRIPCION || '', FECHA_LIMITE: t.FECHA_LIMITE?.slice(0, 10) || '', ID_ESTADO_TAREA: t.ID_ESTADO_TAREA?._id || t.ID_ESTADO_TAREA || '', ID_PRIORIDAD: t.ID_PRIORIDAD?._id || t.ID_PRIORIDAD || '', ES_HITO_PRECLUSIVO: !!t.ES_HITO_PRECLUSIVO }); setShowEdit(true); };
+  const openEdit = (t) => { setTarget(t); setForm({ titulo: t.titulo || '', descripcion: t.descripcion || '', fecha_limite: t.fecha_limite?.slice(0, 10) || '', id_estado_tarea: t.id_estado_tarea != null ? String(t.id_estado_tarea) : '', id_prioridad: t.id_prioridad != null ? String(t.id_prioridad) : '', es_hito_preclusivo: !!t.es_hito_preclusivo }); setShowEdit(true); };
 
-  const estadoOpts = [{ value: '', label: 'Estado...' }, ...estados.map((e) => ({ value: e._id, label: e.NOMBRE }))];
-  const prioridadOpts = [{ value: '', label: 'Prioridad...' }, ...prioridades.map((p) => ({ value: p._id, label: p.NOMBRE }))];
+  const estadoOpts = [{ value: '', label: 'Estado...' }, ...estados.map((e) => ({ value: String(e.id), label: e.nombre }))];
+  const prioridadOpts = [{ value: '', label: 'Prioridad...' }, ...prioridades.map((p) => ({ value: String(p.id), label: p.nombre }))];
 
   const estadoColor = {};
-  estados.forEach((e) => { if (e.NOMBRE?.toLowerCase().includes('completad')) estadoColor[e._id] = '#34d399'; else if (e.NOMBRE?.toLowerCase().includes('progreso')) estadoColor[e._id] = '#60a5fa'; else if (e.NOMBRE?.toLowerCase().includes('pend')) estadoColor[e._id] = '#fbbf24'; });
+  estados.forEach((e) => { const id = String(e.id); if (e.nombre?.toLowerCase().includes('completad')) estadoColor[id] = '#34d399'; else if (e.nombre?.toLowerCase().includes('progreso') || e.nombre?.toLowerCase().includes('curso')) estadoColor[id] = '#60a5fa'; else if (e.nombre?.toLowerCase().includes('pend')) estadoColor[id] = '#fbbf24'; });
+
+  const toPayload = (f) => ({
+    titulo: f.titulo.trim(),
+    descripcion: f.descripcion.trim() || undefined,
+    fecha_limite: f.fecha_limite || undefined,
+    id_estado_tarea: f.id_estado_tarea ? Number(f.id_estado_tarea) : undefined,
+    id_prioridad: f.id_prioridad ? Number(f.id_prioridad) : undefined,
+    es_hito_preclusivo: f.es_hito_preclusivo,
+  });
 
   const handleCreate = async () => {
-    if (!form.TITULO.trim()) { msg('El título es obligatorio', 'danger'); return; }
-    try { await createTarea({ ...form, ID_EXPEDIENTE: expedienteId }); setShowCreate(false); setForm(EMPTY_TAREA); msg('Tarea creada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
+    if (!form.titulo.trim()) { msg('El título es obligatorio', 'danger'); return; }
+    if (!form.id_estado_tarea) { msg('El estado es obligatorio', 'danger'); return; }
+    try { await createTarea({ ...toPayload(form), id_expediente: expedienteId }); setShowCreate(false); setForm(EMPTY_TAREA); msg('Tarea creada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
   };
   const handleEdit = async () => {
-    try { await updateTarea(target._id, form); setShowEdit(false); msg('Tarea actualizada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
+    try { await updateTarea(target.id, toPayload(form)); setShowEdit(false); msg('Tarea actualizada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
   };
   const handleDelete = async () => {
-    try { await deleteTarea(target._id); setShowDelete(false); msg('Tarea eliminada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
+    try { await deleteTarea(target.id); setShowDelete(false); msg('Tarea eliminada'); } catch (e) { msg(e?.message || 'Error', 'danger'); }
   };
 
-  const TareaForm = ({ f, onF }) => (
-    <EditForm style={{ marginTop: 8 }}>
-      <EditField label="Título *" value={f.TITULO} onChange={(e) => onF({ ...f, TITULO: e.target.value })} placeholder="Presentar demanda laboral" />
-      <EditRow cols={2}>
-        <EditSelect label="Estado" value={f.ID_ESTADO_TAREA} onChange={(e) => onF({ ...f, ID_ESTADO_TAREA: e.target.value })} options={estadoOpts} />
-        <EditSelect label="Prioridad" value={f.ID_PRIORIDAD} onChange={(e) => onF({ ...f, ID_PRIORIDAD: e.target.value })} options={prioridadOpts} />
-      </EditRow>
-      <EditField label="Fecha límite" type="date" value={f.FECHA_LIMITE} onChange={(e) => onF({ ...f, FECHA_LIMITE: e.target.value })} />
-      <EditTextArea label="Descripción" value={f.DESCRIPCION} onChange={(e) => onF({ ...f, DESCRIPCION: e.target.value })} rows={2} placeholder="Detalles..." />
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#9fb3cc', cursor: 'pointer', marginTop: 4 }}>
-        <input type="checkbox" checked={!!f.ES_HITO_PRECLUSIVO} onChange={(e) => onF({ ...f, ES_HITO_PRECLUSIVO: e.target.checked })} />
-        Es hito preclusivo
-      </label>
-    </EditForm>
-  );
 
   return (
     <div>
@@ -400,21 +502,21 @@ function TareasTab({ expedienteId, canEdit }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {tareas.map((t) => {
-            const estadoId = t.ID_ESTADO_TAREA?._id || t.ID_ESTADO_TAREA;
-            const estadoNombre = (estados.find((e) => e._id === estadoId)?.NOMBRE) || estadoId || '';
-            const prioNombre = (prioridades.find((p) => p._id === (t.ID_PRIORIDAD?._id || t.ID_PRIORIDAD))?.NOMBRE) || '';
+            const estadoId = t.id_estado_tarea != null ? String(t.id_estado_tarea) : '';
+            const estadoNombre = t.nombre_estado_tarea || (estados.find((e) => String(e.id) === estadoId)?.nombre) || '';
+            const prioNombre = t.nombre_prioridad || (prioridades.find((p) => String(p.id) === String(t.id_prioridad))?.nombre) || '';
             return (
-              <div key={t._id} style={{ background: 'linear-gradient(135deg, #2a3a51, #1e2a3a)', border: `1px solid ${borderCol}`, borderRadius: 10, padding: 14 }}>
+              <div key={t.id} style={{ background: 'linear-gradient(135deg, #2a3a51, #1e2a3a)', border: `1px solid ${borderCol}`, borderRadius: 10, padding: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0' }}>{t.TITULO}</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0' }}>{t.titulo}</span>
                       {estadoNombre && <Badge color={estadoColor[estadoId] || '#9ca3af'}>{estadoNombre}</Badge>}
                       {prioNombre && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'rgba(156,163,175,0.1)', color: '#9ca3af' }}>{prioNombre}</span>}
-                      {t.ES_HITO_PRECLUSIVO && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'rgba(251,191,36,0.15)', color: '#fde68a', border: '1px solid rgba(251,191,36,0.3)' }}>HITO</span>}
+                      {t.es_hito_preclusivo && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'rgba(251,191,36,0.15)', color: '#fde68a', border: '1px solid rgba(251,191,36,0.3)' }}>HITO</span>}
                     </div>
-                    {t.DESCRIPCION && <p style={{ margin: '0 0 6px', fontSize: 12, color: '#94a3b8' }}>{t.DESCRIPCION}</p>}
-                    {t.FECHA_LIMITE && <span style={{ fontSize: 11, color: '#64748b' }}>⏰ Vence: {fmtDate(t.FECHA_LIMITE)}</span>}
+                    {t.descripcion && <p style={{ margin: '0 0 6px', fontSize: 12, color: '#94a3b8' }}>{t.descripcion}</p>}
+                    {t.fecha_limite && <span style={{ fontSize: 11, color: '#64748b' }}>⏰ Vence: {fmtDate(t.fecha_limite)}</span>}
                   </div>
                   {canEdit && (
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -429,14 +531,14 @@ function TareasTab({ expedienteId, canEdit }) {
         </div>
       )}
       <Modal show={showCreate} onClose={() => setShowCreate(false)} title="➕ Nueva Tarea">
-        <TareaForm f={form} onF={setForm} />
+        <TareaForm f={form} onF={setForm} estadoOpts={estadoOpts} prioridadOpts={prioridadOpts} />
         <ModalFooter onCancel={() => setShowCreate(false)} onConfirm={handleCreate} confirmLabel="Crear" />
       </Modal>
       <Modal show={showEdit && !!target} onClose={() => setShowEdit(false)} title="✏️ Editar Tarea">
-        <TareaForm f={form} onF={setForm} />
+        <TareaForm f={form} onF={setForm} estadoOpts={estadoOpts} prioridadOpts={prioridadOpts} />
         <ModalFooter onCancel={() => setShowEdit(false)} onConfirm={handleEdit} confirmLabel="Guardar" />
       </Modal>
-      <DeleteModal show={showDelete && !!target} onClose={() => setShowDelete(false)} onConfirm={handleDelete} label={target?.TITULO} />
+      <DeleteModal show={showDelete && !!target} onClose={() => setShowDelete(false)} onConfirm={handleDelete} label={target?.titulo} />
     </div>
   );
 }
@@ -540,18 +642,18 @@ export default function ExpedienteDetalle() {
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
                   <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#e2e8f0' }}>{selectedExpediente.numero_de_expediente}</h1>
-                  {selectedExpediente.NOMBRE_TIPO_PROCESO && (
-                    <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 10, background: 'rgba(79,209,197,0.1)', color: '#67e8f9', border: '1px solid rgba(79,209,197,0.2)' }}>{selectedExpediente.NOMBRE_TIPO_PROCESO}</span>
+                  {selectedExpediente.nombre_tipo_proceso && (
+                    <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 10, background: 'rgba(79,209,197,0.1)', color: '#67e8f9', border: '1px solid rgba(79,209,197,0.2)' }}>{selectedExpediente.nombre_tipo_proceso}</span>
                   )}
-                  {selectedExpediente.NOMBRE_SUBTIPO_PROCESO && (
-                    <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 10, background: 'rgba(99,102,241,0.1)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>{selectedExpediente.NOMBRE_SUBTIPO_PROCESO}</span>
+                  {selectedExpediente.nombre_subtipo_proceso && (
+                    <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 10, background: 'rgba(99,102,241,0.1)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>{selectedExpediente.nombre_subtipo_proceso}</span>
                   )}
                 </div>
-                <p style={{ margin: 0, fontSize: 18, color: '#a5b4fc', fontWeight: 500 }}>{selectedExpediente.cliente}</p>
+                <p style={{ margin: 0, fontSize: 18, color: '#a5b4fc', fontWeight: 500 }}>{selectedExpediente.nombre_cliente}</p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, marginTop: 10, fontSize: 13, color: '#64748b' }}>
-                  {selectedExpediente.contraparte && <span>Contraparte: <span style={{ color: '#94a3b8' }}>{selectedExpediente.contraparte}</span></span>}
+                  {selectedExpediente.nombre_contraparte && <span>Contraparte: <span style={{ color: '#94a3b8' }}>{selectedExpediente.nombre_contraparte}</span></span>}
                   {selectedExpediente.juzgado_o_autoridad_que_conoce && <span>Juzgado: <span style={{ color: '#94a3b8' }}>{selectedExpediente.juzgado_o_autoridad_que_conoce}</span></span>}
-                  {selectedExpediente.calidad && <span style={{ textTransform: 'capitalize' }}>Calidad: <span style={{ color: '#94a3b8' }}>{selectedExpediente.calidad}</span></span>}
+                  {selectedExpediente.calidad_usuario && <span style={{ textTransform: 'capitalize' }}>Calidad: <span style={{ color: '#94a3b8' }}>{selectedExpediente.calidad_usuario}</span></span>}
                 </div>
               </div>
             </div>

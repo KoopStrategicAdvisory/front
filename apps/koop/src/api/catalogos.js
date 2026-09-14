@@ -59,6 +59,34 @@ export async function listTiposPretension() {
   return toListResponse(response.data).items;
 }
 
+// ─── Estado de tarea ──────────────────────────────────────────────────────────
+
+export async function listEstadosTarea() {
+  const response = await api.get('/catalogos/estado-tarea');
+  return toListResponse(response.data).items;
+}
+
+// ─── Prioridad ────────────────────────────────────────────────────────────────
+
+export async function listPrioridades() {
+  const response = await api.get('/catalogos/prioridad');
+  return toListResponse(response.data).items;
+}
+
+// ─── Tipo de actuación ────────────────────────────────────────────────────────
+
+export async function listTiposActuacion() {
+  const response = await api.get('/catalogos/tipo-actuacion');
+  return toListResponse(response.data).items;
+}
+
+// ─── Estado de etapa ──────────────────────────────────────────────────────────
+
+export async function listEstadosEtapa() {
+  const response = await api.get('/catalogos/estado-etapa');
+  return toListResponse(response.data).items;
+}
+
 // ─── Etapas procesales ────────────────────────────────────────────────────────
 
 export async function listEtapasProcesales(idTipoProceso) {
