@@ -5,7 +5,7 @@ import logo from '../../../../Images/Koop Logo.png';
 import { useAuth } from '../../../../context/AuthContext';
 
 export default function Register() {
-  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', tipoDocumento: 'CC', numeroDocumento: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -20,14 +20,17 @@ export default function Register() {
     setSuccess('');
     setLoading(true);
     try {
-      const res = await register(form.name, form.email, form.password);
+      const res = await register(form.name, form.email, form.password, {
+        tipoDocumento: form.tipoDocumento,
+        numeroDocumento: form.numeroDocumento,
+      });
       if (res.ok) {
         const payload = res.data || { ok: true };
         if (payload?.accessToken) {
           navigate('/dashboard');
         } else {
-          setSuccess('Tu registro fue recibido. Un administrador activara tu cuenta y te avisaremos por correo.');
-          setForm({ name: '', email: '', password: '' });
+          setSuccess('Registro recibido. Revisa tu correo para continuar con la activación de tu cuenta.');
+          setForm({ name: '', email: '', password: '', tipoDocumento: 'CC', numeroDocumento: '' });
         }
       } else {
         setError(res.error || 'Error en registro');
@@ -91,6 +94,28 @@ export default function Register() {
               onChange={onChange}
               required
             />
+          </div>
+          <div className="input-group">
+            <label htmlFor="numeroDocumento">Documento de identidad</label>
+            <div className="input-row">
+              <select id="tipoDocumento" name="tipoDocumento" value={form.tipoDocumento} onChange={onChange}>
+                <option value="CC">CC</option>
+                <option value="CE">CE</option>
+                <option value="PA">Pasaporte</option>
+                <option value="NIT">NIT</option>
+              </select>
+              <input
+                id="numeroDocumento"
+                name="numeroDocumento"
+                type="text"
+                placeholder="Número de documento"
+                value={form.numeroDocumento}
+                onChange={onChange}
+              />
+            </div>
+            <small style={{ color: '#9fb3cc', display: 'block', marginTop: 6, fontSize: 12 }}>
+              Si ya eres cliente de la firma, con esto vinculamos tu cuenta a tu expediente.
+            </small>
           </div>
           <div className="input-group">
             <label htmlFor="password">Contrasena</label>

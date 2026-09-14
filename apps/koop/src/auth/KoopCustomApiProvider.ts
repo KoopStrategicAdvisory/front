@@ -111,9 +111,13 @@ class KoopCustomApiProvider implements AuthProvider<KoopCredentials> {
     name: string,
     email: string,
     password: string,
-    roles?: KoopRole[],
+    extra?: { roles?: KoopRole[]; tipoDocumento?: string; numeroDocumento?: string },
   ): Promise<AuthSession | null> {
-    const data = await registerApi({ name, email, password, roles }) as { accessToken?: string; user?: Record<string, unknown> };
+    const data = await registerApi({
+      name, email, password,
+      tipoDocumento: extra?.tipoDocumento,
+      numeroDocumento: extra?.numeroDocumento,
+    }) as { accessToken?: string; user?: Record<string, unknown> };
     if (!data?.accessToken) return null;
     this.session = buildAuthSession(data.accessToken, data.user);
     return this.session;

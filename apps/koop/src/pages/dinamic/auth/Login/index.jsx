@@ -17,7 +17,6 @@ export default function Login() {
   const onSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    console.log('Submitting login form, Hola q ac', email);
     const res = await login(email, password);
     if (!res.ok) {
       setError(res.error || 'Error al iniciar sesión');
@@ -81,6 +80,9 @@ export default function Login() {
         </form>
         <div className="auth-actions">
           ¿No tienes cuenta? <Link to="/register">Regístrate</Link> · <Link to="/">Volver al inicio</Link>
+        </div>
+        <div className="auth-actions" style={{ marginTop: 8 }}>
+          <Link to="/forgot-password">¿Olvidaste tu contraseña?</Link>
         </div>
       </div>
     </div>

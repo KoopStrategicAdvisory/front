@@ -23,6 +23,9 @@ import TramitesNotariales from './pages/static/TramitesNotariales/index.jsx';
 import AccionesDeTutela from './pages/static/AccionesDeTutela/index.jsx';
 import Login from './pages/dinamic/auth/Login/index.jsx';
 import Register from './pages/dinamic/auth/Register/index.jsx';
+import VerifyEmail from './pages/dinamic/auth/VerifyEmail/index.jsx';
+import ForgotPassword from './pages/dinamic/auth/ForgotPassword/index.jsx';
+import ResetPassword from './pages/dinamic/auth/ResetPassword/index.jsx';
 import Panel from './pages/dinamic/Panel/index.jsx';
 import AdminUsuarios from './pages/dinamic/AdminUsuariosResponsive/index.jsx';
 import AdminTareas from './pages/dinamic/AdminTareas/index.jsx';
@@ -70,7 +73,7 @@ function App() {
     const location = useLocation();
     const { isAuthenticated } = useAuth();
     const p = location.pathname.toLowerCase();
-    const hideNavbar = p.startsWith('/login') || p.startsWith('/register');
+    const hideNavbar = p.startsWith('/login') || p.startsWith('/register') || p.startsWith('/verify-email') || p.startsWith('/forgot-password') || p.startsWith('/reset-password');
     return (
       <>
         {/* Navbar global (se oculta en login y registro) */}
@@ -103,6 +106,9 @@ function App() {
             element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
           />
           <Route path="/register" element={<Register />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/logout" element={<Logout />} />
           <Route path="/callback" element={<SpotifyCallback />} />
           <Route
