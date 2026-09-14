@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../../../../api/axios";
-import { listActiveClients } from "../../../../api/clients";
+import { listClientes } from "../../../../api/clientes";
 import { useAuth } from "../../../../context/AuthContext";
 import useCalendarEvents from "../../../../hooks/useCalendarEvents";
 import { normalizeUpperAscii } from "../../../../utils/strings.js";
@@ -74,14 +74,14 @@ export default function AdminDashboard() {
       try {
         setClientsLoading(true);
         setClientsError(null);
-        const response = await listActiveClients();
+        const response = await listClientes();
         if (ignore) return;
         const items = Array.isArray(response?.items) ? response.items : [];
         setClients(
           items
             .map((item) => ({
-              id: String(item?.id || item?._id || item?.documentNumber || '').trim(),
-              name: item?.name || item?.fullName || item?.email || 'Cliente sin nombre',
+              id: String(item?.id ?? '').trim(),
+              name: item?.nombre || item?.email || 'Cliente sin nombre',
               email: item?.email,
             }))
             .filter((entry) => entry.id)

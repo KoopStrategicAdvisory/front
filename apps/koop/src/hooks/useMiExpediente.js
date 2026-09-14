@@ -10,7 +10,8 @@ import {
   deleteDocument,
   deleteFolder,
 } from '../api/docs';
-import { listActiveClients } from '../api/clients';
+import { listExpedientes } from '../api/expedientes';
+import { listClientes } from '../api/clientes';
 
 const convertLatin1ToUtf8 = (input) => {
   if (!input) return input;
@@ -161,17 +162,17 @@ export function useMiExpediente({ propSelectedClient = null, isModal = false } =
   }, []);
 
   const loadClientFolders = useCallback(async (client) => {
-    if (!client?.documentNumber) return;
+    if (!client?.numero_documento) return;
 
     setLoadingFolders(true);
     try {
       const data = await listRecentDocs({
         limit: 100,
-        subfolder: `clientes/${client.documentNumber}`,
+        subfolder: `clientes/${client.numero_documento}`,
       });
 
       const folders = {};
-      const clientBasePath = `clientes/${client.documentNumber}`;
+      const clientBasePath = `clientes/${client.numero_documento}`;
 
       if (Array.isArray(data?.items)) {
         data.items.forEach((item) => {
@@ -301,7 +302,7 @@ export function useMiExpediente({ propSelectedClient = null, isModal = false } =
       if (!f) return;
       let errorMessage = null;
       if (isAdmin) {
-        if (!selectedClient?.documentNumber) {
+        if (!selectedClient?.numero_documento) {
           errorMessage = 'Debes seleccionar un cliente primero';
         } else if (!selectedFolder?.path) {
           errorMessage = 'Debes seleccionar una carpeta específica del proceso judicial para subir documentos. No se permiten archivos sueltos en la carpeta del cliente.';
@@ -593,8 +594,8 @@ export function useMiExpediente({ propSelectedClient = null, isModal = false } =
       setShowErrorNotice(false);
       setShowSuccessNotice(false);
       let clientBasePath = '';
-      if (isAdmin && selectedClient?.documentNumber) {
-        clientBasePath = `clientes/${selectedClient.documentNumber}`;
+      if (isAdmin && selectedClient?.numero_documento) {
+        clientBasePath = `clientes/${selectedClient.numero_documento}`;
       } else if (!isAdmin) {
         clientBasePath = 'clientes';
       } else {
@@ -712,7 +713,7 @@ export function useMiExpediente({ propSelectedClient = null, isModal = false } =
       } else if (!isAdmin && selectedUserFolder) {
         subfolder = selectedUserFolder.path;
       } else if (isAdmin && selectedClient) {
-        subfolder = `clientes/${selectedClient.documentNumber}`;
+        subfolder = `clientes/${selectedClient.numero_documento}`;
       } else if (!isAdmin) {
         subfolder = DEFAULT_FOLDER;
       } else {
@@ -875,6 +876,9 @@ export function useMiExpediente({ propSelectedClient = null, isModal = false } =
     }
   }, [isModal, loadClientFolders, propSelectedClient]);
 
+  // El backend actual ya no tiene "cliente asignado a un admin": la responsabilidad
+  // vive en el Expediente (id_usuario = abogado responsable del caso), no en el Cliente.
+  // "Mis clientes" se deriva de los clientes que aparecen en mis propios expedientes.
   useEffect(() => {
     if (!isAdmin) return;
     let ignore = false;
@@ -882,11 +886,18 @@ export function useMiExpediente({ propSelectedClient = null, isModal = false } =
       try {
         setAssignedLoading(true);
         setAssignedError(null);
-        const data = await listActiveClients();
-        if (ignore) return;
-        const items = Array.isArray(data?.items) ? data.items : [];
         const myId = String(user?.id || user?.sub || '').trim();
-        setAssignedClients(items.filter((c) => String(c?.assignedAdmin?.id || '').trim() === myId));
+        const [expedientesRes, clientesRes] = await Promise.all([
+          listExpedientes({ limit: 200 }),
+          listClientes({ limit: 200 }),
+        ]);
+        if (ignore) return;
+        const misExpedientes = (expedientesRes?.items || []).filter(
+          (exp) => String(exp?.id_usuario ?? '').trim() === myId
+        );
+        const misClienteIds = new Set(misExpedientes.map((exp) => exp.id_cliente));
+        const clientes = clientesRes?.items || [];
+        setAssignedClients(clientes.filter((c) => misClienteIds.has(c.id)));
       } catch (e) {
         if (!ignore) setAssignedError(e?.response?.data?.message || e?.message || 'No se pudo cargar clientes asignados');
       } finally {

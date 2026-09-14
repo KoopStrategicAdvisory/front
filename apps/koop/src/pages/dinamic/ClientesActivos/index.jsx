@@ -1,65 +1,216 @@
-import { useActiveClients } from '../../../hooks/useActiveClients';
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react';
+import { useClientes } from '../../../hooks/useClientes';
+import { listRecentDocs } from '../../../api/docs';
+import { useAuth } from '../../../context/AuthContext';
 import '../../../styles/dashboard.css';
 import { SuccessNotice, DangerNotice } from '../../../components/common/Notice';
-import { EditForm, EditField, EditRow } from '../../../components/common/EditFormKit';
-import MiExpediente from '../../../views/authenticated/MiExpediente';
+import { EditForm, EditField, EditRow, EditSelect } from '../../../components/common/EditFormKit';
+
+const EMPTY_CLIENT_FORM = {
+  nombre: '',
+  tipo_persona: 'NATURAL',
+  tipo_documento: 'CC',
+  numero_documento: '',
+  email: '',
+  telefono: '',
+};
+
+const TIPO_PERSONA_OPTIONS = [
+  { value: 'NATURAL', label: 'Persona natural' },
+  { value: 'JURIDICA', label: 'Persona jurídica' },
+];
+
+const TIPO_DOCUMENTO_OPTIONS = [
+  { value: 'CC', label: 'Cédula de ciudadanía' },
+  { value: 'CE', label: 'Cédula de extranjería' },
+  { value: 'NIT', label: 'NIT' },
+  { value: 'PA', label: 'Pasaporte' },
+  { value: 'TI', label: 'Tarjeta de identidad' },
+  { value: 'PE', label: 'Permiso especial' },
+];
+
+function CreateClientModal({ onClose, onSubmit }) {
+  const [form, setForm] = useState({ ...EMPTY_CLIENT_FORM });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const set = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
+
+  const handleSubmit = async () => {
+    setError(null);
+    if (!form.nombre.trim()) return setError('El nombre es obligatorio');
+
+    setSaving(true);
+    try {
+      await onSubmit({
+        nombre: form.nombre.trim(),
+        tipo_persona: form.tipo_persona,
+        tipo_documento: form.tipo_documento,
+        numero_documento: form.numero_documento.trim() || undefined,
+        email: form.email.trim() || undefined,
+        telefono: form.telefono.trim() || undefined,
+      });
+    } catch (e) {
+      setError(e?.message || 'Error al crear el cliente');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 16 }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="dash-card" style={{ width: '100%', maxWidth: 560 }}>
+        <div className="dash-header" style={{ marginBottom: 12 }}>
+          <div className="dash-title">Nuevo cliente</div>
+        </div>
+        <div className="dash-item">
+          <EditForm>
+            <EditField label="Nombre completo / razón social" value={form.nombre} onChange={set('nombre')} placeholder="Ej: María Fernanda Torres" />
+            <EditRow cols={2}>
+              <EditSelect label="Tipo de persona" value={form.tipo_persona} onChange={set('tipo_persona')} options={TIPO_PERSONA_OPTIONS} />
+              <EditSelect label="Tipo de documento" value={form.tipo_documento} onChange={set('tipo_documento')} options={TIPO_DOCUMENTO_OPTIONS} />
+            </EditRow>
+            <EditField label="Número de documento" value={form.numero_documento} onChange={set('numero_documento')} placeholder="Ej: 80153356" />
+            <EditRow cols={2}>
+              <EditField label="Email" type="email" value={form.email} onChange={set('email')} placeholder="cliente@correo.com" />
+              <EditField label="Celular" value={form.telefono} onChange={set('telefono')} placeholder="Ej: 300 123 4567" />
+            </EditRow>
+          </EditForm>
+          {error && <DangerNotice>{error}</DangerNotice>}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+          <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={saving}>
+            {saving ? 'Creando...' : 'Crear cliente'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ClientesActivos() {
-  const {
-    isAdmin,
-    loading,
-    error,
-    editing,
-    setEditing,
-    saving,
-    search,
-    setSearch,
-    expandedClient,
-    collapseClient,
-    assignOpen,
-    assignClient,
-    admins,
-    adminsLoading,
-    adminsError,
-    selectedAdminId,
-    setSelectedAdminId,
-    filesOpen,
-    filesClient,
-    clientFiles,
-    loadingFiles,
-    confirmDeleteOpen,
-    confirmDeleteClient,
-    deleting,
-    deleteError,
-    deletePass,
-    setDeletePass,
-    notice,
-    noticeKind,
-    fetchClients,
-    filtered,
-    getAssignedFor,
-    openAssignModal,
-    onSaveAssignment,
-    onEdit,
-    onSave,
-    onAskDelete,
-    onConfirmDelete,
-    openFilesModal,
-    folderForClient,
-    toggleClientExpansion,
-    closeAssignModal,
-    closeFilesModal,
-    closeDeleteModal,
-  } = useActiveClients();
+  const { user } = useAuth();
+  const roles = Array.isArray(user?.roles) ? user.roles : [user?.roles].filter(Boolean);
+  const isAdmin = roles.some((r) => String(r || '').toLowerCase() === 'admin');
+
+  const { clientes, loading, error, fetchClientes, createCliente, updateCliente, deleteCliente } = useClientes({ autoFetch: isAdmin });
+
+  const [search, setSearch] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [confirmDeleteClient, setConfirmDeleteClient] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [noticeKind, setNoticeKind] = useState('success');
+  const [expandedClient, setExpandedClient] = useState(null);
+  const [clientFiles, setClientFiles] = useState({});
+  const [loadingFiles, setLoadingFiles] = useState({});
+  const noticeTimer = useRef(null);
+
+  const showNotice = useCallback((msg, kind = 'success') => {
+    setNotice(msg);
+    setNoticeKind(kind);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), 3500);
+  }, []);
+
+  useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current); }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return clientes;
+    return clientes.filter((c) =>
+      [c.nombre, c.email, c.numero_documento, c.telefono, c.id]
+        .map((v) => String(v ?? '').toLowerCase())
+        .some((v) => v.includes(q))
+    );
+  }, [clientes, search]);
+
+  const folderForClient = useCallback((c) => {
+    const id = String(c?.numero_documento ?? c?.id ?? '').trim();
+    return id ? `clientes/${id}/` : 'clientes/sin-id/';
+  }, []);
+
+  const loadClientFiles = useCallback(async (c) => {
+    const folder = folderForClient(c).replace(/\/$/, '');
+    setLoadingFiles((prev) => ({ ...prev, [c.id]: true }));
+    try {
+      const data = await listRecentDocs({ limit: 50, subfolder: folder });
+      setClientFiles((prev) => ({ ...prev, [c.id]: Array.isArray(data?.items) ? data.items : [] }));
+    } catch {
+      setClientFiles((prev) => ({ ...prev, [c.id]: [] }));
+    } finally {
+      setLoadingFiles((prev) => ({ ...prev, [c.id]: false }));
+    }
+  }, [folderForClient]);
+
+  const toggleClientExpansion = useCallback(async (c) => {
+    if (expandedClient === c.id) { setExpandedClient(null); return; }
+    setExpandedClient(c.id);
+    if (!clientFiles[c.id]) await loadClientFiles(c);
+  }, [expandedClient, clientFiles, loadClientFiles]);
+
+  const onEdit = (c) => setEditing({
+    id: c.id,
+    nombre: c.nombre,
+    email: c.email,
+    numero_documento: c.numero_documento,
+    telefono: c.telefono,
+  });
+
+  const onSave = async () => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      await updateCliente(editing.id, {
+        nombre: String(editing.nombre ?? '').trim(),
+        numero_documento: String(editing.numero_documento ?? '').trim() || undefined,
+        telefono: String(editing.telefono ?? '').trim() || undefined,
+      });
+      setEditing(null);
+      showNotice('Cliente actualizado correctamente');
+    } catch (e) {
+      showNotice(e?.message || 'No se pudo guardar', 'danger');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onConfirmDelete = async () => {
+    if (!confirmDeleteClient) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteCliente(confirmDeleteClient.id);
+      setConfirmDeleteClient(null);
+      showNotice('Cliente eliminado correctamente', 'danger');
+    } catch (e) {
+      setDeleteError(e?.message || 'No se pudo eliminar el cliente');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleCreate = async (payload) => {
+    await createCliente(payload);
+    setShowCreateModal(false);
+    showNotice('Cliente creado correctamente');
+  };
 
   if (!isAdmin) {
     return (
       <div className="dash-page" style={{ padding: 40 }}>
         <div className="dash-card" style={{ maxWidth: 560 }}>
           <h2 className="dash-title">Acceso restringido</h2>
-          <p style={{ marginTop: 12 }}>
-            Esta seccion esta disponible solo para administradores.
-          </p>
+          <p style={{ marginTop: 12 }}>Esta sección está disponible solo para administradores.</p>
         </div>
       </div>
     );
@@ -69,294 +220,127 @@ export default function ClientesActivos() {
     <div
       className="dash-page"
       style={{
-        backgroundImage:
-          "linear-gradient(rgba(13,27,42,0.65), rgba(27,38,59,0.65)), url('/fondodashboard.jpg')",
+        backgroundImage: "linear-gradient(rgba(13,27,42,0.65), rgba(27,38,59,0.65)), url('/fondodashboard.jpg')",
         backgroundSize: 'cover',
         backgroundAttachment: 'fixed',
         backgroundPosition: 'center',
         paddingLeft: 16,
         paddingRight: 16,
         paddingBottom: 16,
-        // respetar el padding-top del .dash-page (deja espacio para navbar fijo)
       }}
     >
       <div className="dash-card" style={{ width: '100%', maxWidth: 1200 }}>
-         <style>{`
-           @keyframes spin {
-             0% { transform: rotate(0deg); }
-             100% { transform: rotate(360deg); }
-           }
-           .only-mobile { display: block; }
-           .only-desktop { display: none; }
-           @media (min-width: 768px) {
-             .only-mobile { display: none; }
-             .only-desktop { display: block; }
-           }
-           @media (max-width: 767px) {
-             .mobile-list { display: grid; gap: 10px; }
-           }
-           /* Header layout */
-           .clients-header { display: grid; gap: 10px; align-items: center; }
-           .clients-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-           @media (min-width: 768px) {
-             .clients-header { grid-template-columns: 1fr auto; }
-           }
-           @media (max-width: 767px) {
-             .clients-actions { grid-template-columns: 1fr; }
-             .clients-actions .btn { width: 100%; }
-           }
-           .mobile-item { border: 1px solid rgba(148,163,184,0.35); border-radius: 10px; overflow: hidden; background: #1b263b; }
-           .mobile-item-header { display: flex; align-items: center; justify-content: space-between; padding: 0; cursor: pointer; height: 44px; }
-           .mobile-item .btn { border-radius: 10px; width: 100%; }
-           .mobile-item-title { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; padding: 0 12px; }
-           .mobile-item-details { padding: 10px 12px; border-top: 1px solid rgba(148,163,184,0.25); }
-           .kv { display: grid; grid-template-columns: 120px 1fr; gap: 8px; font-size: 14px; }
-           .kv span { opacity: 0.9; }
-           @media (max-width: 480px) {
-             .kv { grid-template-columns: 1fr; }
-             .kv span { font-size: 12px; opacity: 0.8; }
-           }
-         `}</style>
+        <style>{`
+          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+          .only-mobile { display: block; }
+          .only-desktop { display: none; }
+          @media (min-width: 768px) { .only-mobile { display: none; } .only-desktop { display: block; } }
+          .clients-header { display: grid; gap: 10px; align-items: center; }
+          .clients-actions { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+          @media (min-width: 768px) { .clients-header { grid-template-columns: 1fr auto; } }
+          @media (max-width: 767px) { .clients-actions { grid-template-columns: 1fr 1fr; } .clients-actions input[type=search] { grid-column: 1 / -1; } }
+          .mobile-item { border: 1px solid rgba(148,163,184,0.35); border-radius: 10px; overflow: hidden; background: #1b263b; }
+          .mobile-item-header { display: flex; align-items: center; justify-content: space-between; padding: 0; cursor: pointer; height: 44px; }
+          .mobile-item .btn { border-radius: 10px; width: 100%; }
+          .mobile-item-title { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; padding: 0 12px; }
+          .mobile-item-details { padding: 10px 12px; border-top: 1px solid rgba(148,163,184,0.25); }
+          .kv { display: grid; grid-template-columns: 120px 1fr; gap: 8px; font-size: 14px; }
+          @media (max-width: 480px) { .kv { grid-template-columns: 1fr; } }
+        `}</style>
+
         <div className="dash-header clients-header" style={{ marginBottom: 16 }}>
-          <div className="dash-title">Clientes activos</div>
+          <div className="dash-title">Clientes</div>
           <div className="clients-actions">
             <input
               type="search"
               name="q"
               autoComplete="off"
-              placeholder="Buscar por nombre, email, cedula o celular"
+              placeholder="Buscar por nombre, email, documento o celular"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              style={{
-                background: '#1b263b',
-                color: '#e2e8f0',
-                border: '1px solid rgba(148,163,184,0.35)',
-                borderRadius: 8,
-                padding: '6px 10px',
-              }}
+              style={{ background: '#1b263b', color: '#e2e8f0', border: '1px solid rgba(148,163,184,0.35)', borderRadius: 8, padding: '6px 10px' }}
             />
-            <button className="btn btn-secondary" onClick={fetchClients} disabled={loading}>
+            <button className="btn btn-secondary" onClick={fetchClientes} disabled={loading}>
               {loading ? 'Actualizando...' : 'Refrescar'}
+            </button>
+            <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
+              Nuevo cliente
             </button>
           </div>
         </div>
 
-        {notice && (noticeKind === 'danger' ? (
-          <DangerNotice autoHideMs={3500}>{notice}</DangerNotice>
-        ) : (
-          <SuccessNotice autoHideMs={3500}>{notice}</SuccessNotice>
-        ))}
-        {error && (<DangerNotice>{error}</DangerNotice>)}
+        {notice && (noticeKind === 'danger' ? <DangerNotice autoHideMs={3500}>{notice}</DangerNotice> : <SuccessNotice autoHideMs={3500}>{notice}</SuccessNotice>)}
+        {error && <DangerNotice>{error}</DangerNotice>}
 
         {/* Desktop table */}
         <div className="dash-item only-desktop" style={{ overflowX: 'auto' }}>
-          <table className="me-table" style={{ minWidth: 820 }}>
+          <table className="me-table" style={{ minWidth: 720 }}>
             <thead>
               <tr>
                 <th>Nombre</th>
                 <th>Email</th>
-                <th>Cedula</th>
+                <th>Documento</th>
                 <th>Celular</th>
                 <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: 16 }}>
-                    {loading ? 'Cargando...' : 'No hay clientes activos para mostrar'}
-                  </td>
-                </tr>
+                <tr><td colSpan={5} style={{ textAlign: 'center', padding: 16 }}>{loading ? 'Cargando...' : 'No hay clientes para mostrar'}</td></tr>
               )}
               {filtered.map((c) => (
-                <div key={c.id} style={{ display: 'contents' }}>
+                <Fragment key={c.id}>
                   <tr>
                     <td>
-                    <div 
-                      style={{ 
-                        cursor: 'pointer', 
-                        color: '#4fd1c5', 
-                        fontWeight: '500',
-                        textDecoration: 'underline'
-                      }}
-                      onClick={() => toggleClientExpansion(c)}
-                      onMouseOver={(e) => e.target.style.color = '#6ee7d7'}
-                      onMouseOut={(e) => e.target.style.color = '#4fd1c5'}
-                    >
-                      {c.name || '-'} {expandedClient === c.id ? '▼' : '▶'}
-                    </div>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>Admin asignado: {c.assignedAdmin?.name || '—'}</div>
-                  </td>
-                  <td>{c.email || '-'}</td>
-                  <td>{c.documentNumber || '-'}</td>
-                  <td>{c.phone || '-'}</td>
-                  <td>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => openAssignModal(c)}
-                        title={getAssignedFor(c.id) ? `Asignado a ${getAssignedFor(c.id)?.name || ''}` : 'Asignar administrador'}
+                      <div
+                        style={{ cursor: 'pointer', color: '#4fd1c5', fontWeight: 500, textDecoration: 'underline' }}
+                        onClick={() => toggleClientExpansion(c)}
                       >
-                        {getAssignedFor(c.id) ? 'Asignado' : 'Asignar'}
-                      </button>
-                      <button 
-                        className="btn btn-primary btn-sm"
-                        onClick={() => openFilesModal(c)}
-                      >
-                        Archivos
-                      </button>
-                      <button className="btn btn-primary btn-sm" onClick={() => onEdit(c)}>Editar</button>
-                      <button className="btn btn-secondary btn-sm" onClick={() => onAskDelete(c)}>Eliminar</button>
-                    </div>
-                  </td>
-                </tr>
-                
-                {/* Fila expandible con archivos */}
-                expandedClient === c.id && (
-                  <tr key={`expanded-${c.id}`}>
-                    <td colSpan={5} style={{ padding: 0, background: '#0c1530' }}>
-                        <div style={{ padding: '20px' }}>
-                          <div style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'center',
-                            marginBottom: '16px'
-                          }}>
-                            <h4 style={{ margin: 0, color: '#e2e8f0' }}>
-                              Archivos y Carpetas - {c.name}
-                            </h4>
-                            <button 
-                              className="btn btn-secondary btn-sm"
-                              onClick={collapseClient}
-                            >
-                              Cerrar
-                            </button>
-                          </div>
-                          
+                        {c.nombre || '-'} {expandedClient === c.id ? '▼' : '▶'}
+                      </div>
+                    </td>
+                    <td>{c.email || '-'}</td>
+                    <td>{c.numero_documento || '-'}</td>
+                    <td>{c.telefono || '-'}</td>
+                    <td>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        <button className="btn btn-primary btn-sm" onClick={() => onEdit(c)}>Editar</button>
+                        <button className="btn btn-secondary btn-sm" onClick={() => setConfirmDeleteClient(c)}>Eliminar</button>
+                      </div>
+                    </td>
+                  </tr>
+                  {expandedClient === c.id && (
+                    <tr key={`expanded-${c.id}`}>
+                      <td colSpan={5} style={{ padding: 0, background: '#0c1530' }}>
+                        <div style={{ padding: 20 }}>
+                          <h4 style={{ margin: '0 0 16px', color: '#e2e8f0' }}>Archivos recientes — {c.nombre}</h4>
                           {loadingFiles[c.id] ? (
-                            <div style={{ 
-                              textAlign: 'center', 
-                              padding: '40px',
-                              color: '#cbd5e1'
-                            }}>
-                              <div style={{ 
-                                display: 'inline-block',
-                                width: '20px',
-                                height: '20px',
-                                border: '2px solid #4fd1c5',
-                                borderTop: '2px solid transparent',
-                                borderRadius: '50%',
-                                animation: 'spin 1s linear infinite',
-                                marginRight: '8px'
-                              }}></div>
-                              Cargando archivos...
-                            </div>
+                            <div style={{ textAlign: 'center', padding: 24, color: '#cbd5e1' }}>Cargando archivos...</div>
+                          ) : (!clientFiles[c.id] || clientFiles[c.id].length === 0) ? (
+                            <div style={{ textAlign: 'center', padding: 24, color: '#cbd5e1' }}>No hay archivos para mostrar</div>
                           ) : (
-                            <div style={{ 
-                              border: '1px solid #394b61', 
-                              borderRadius: '8px', 
-                              overflow: 'hidden',
-                              background: '#1b263b'
-                            }}>
-                              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead style={{ background: '#0c1530' }}>
-                                  <tr>
-                                    <th style={{ padding: '12px 16px', fontWeight: '600', textAlign: 'left' }}>Nombre</th>
-                                    <th style={{ padding: '12px 16px', fontWeight: '600', textAlign: 'left' }}>Tipo</th>
-                                    <th style={{ padding: '12px 16px', fontWeight: '600', textAlign: 'left' }}>Fecha</th>
-                                    <th style={{ padding: '12px 16px', fontWeight: '600', textAlign: 'left' }}>Tamaño</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {(!clientFiles[c.id] || clientFiles[c.id].length === 0) ? (
-                                    <tr>
-                                      <td colSpan={4} style={{ 
-                                        textAlign: 'center', 
-                                        padding: '40px',
-                                        color: '#cbd5e1'
-                                      }}>
-                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                                          <div>No hay archivos o carpetas para mostrar</div>
-                                          <div style={{ fontSize: '14px', opacity: 0.7 }}>
-                                            Haz clic en "Archivos" para gestionar documentos
-                                          </div>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  ) : (
-                                    clientFiles[c.id]
-                                      .filter((f) => {
-                                        const key = f.key || '';
-                                        const folder = folderForClient(c);
-                                        const isRootClientFolder = key === folder && f.isFolder;
-                                        return !isRootClientFolder;
-                                      })
-                                      .map((f) => {
-                                        const dt = f.lastModified ? new Date(f.lastModified) : (f.createdTime ? new Date(f.createdTime) : null);
-                                        const isFolder = f.isFolder || f.key?.endsWith('/') || f.name?.endsWith('/');
-                                        
-                                        // Extraer solo el nombre de la carpeta/archivo, sin la ruta completa
-                                        let name = f.name || (f.key || '').split('/').pop();
-                                        if (isFolder && name && folderForClient(c)) {
-                                          const clientPrefix = folderForClient(c).replace(/\/$/, '');
-                                          if (f.key && f.key.startsWith(clientPrefix)) {
-                                            const relativePath = f.key.replace(clientPrefix + '/', '');
-                                            name = relativePath.replace(/\/$/, '');
-                                          }
-                                        }
-                                        
-                                        const sizeKb = typeof f.size === 'number' ? Math.max(1, Math.round(f.size / 1024)) : null;
-                                        
-                                        return (
-                                          <tr key={f.key || f.id} style={{ 
-                                            borderBottom: '1px solid #394b61'
-                                          }}>
-                                            <td style={{ padding: '12px 16px' }}>
-                                              <span style={{ 
-                                                color: isFolder ? '#fc771c' : '#e2e8f0',
-                                                fontWeight: '500'
-                                              }}>
-                                                {name}
-                                              </span>
-                                            </td>
-                                            <td style={{ padding: '12px 16px' }}>
-                                              <span style={{ 
-                                                color: isFolder ? '#fc771c' : '#4fd1c5',
-                                                fontWeight: '500'
-                                              }}>
-                                                {isFolder ? 'Carpeta' : 'Archivo'}
-                                              </span>
-                                            </td>
-                                            <td style={{ padding: '12px 16px', color: '#cbd5e1' }}>
-                                              {dt ? dt.toLocaleDateString('es-CO') : '-'}
-                                            </td>
-                                            <td style={{ padding: '12px 16px', color: '#cbd5e1' }}>
-                                              {sizeKb ? `${sizeKb} KB` : '-'}
-                                            </td>
-                                          </tr>
-                                        );
-                                      })
-                                  )}
-                                </tbody>
-                              </table>
+                            <div style={{ border: '1px solid #394b61', borderRadius: 8, overflow: 'hidden', background: '#1b263b' }}>
+                              {clientFiles[c.id].map((f) => (
+                                <div key={f.key || f.id} style={{ padding: '10px 14px', borderBottom: '1px solid #394b61', color: '#e2e8f0' }}>
+                                  {f.name || (f.key || '').split('/').pop()}
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
                       </td>
                     </tr>
                   )}
-                </div>
+                </Fragment>
               ))}
             </tbody>
           </table>
         </div>
 
-        {/* Mobile list with expandable details */}
-        <div className="dash-item only-mobile mobile-list">
+        {/* Mobile list */}
+        <div className="dash-item only-mobile" style={{ display: 'grid', gap: 10 }}>
           {filtered.length === 0 && (
-            <div style={{ textAlign: 'center', padding: 8 }}>
-              {loading ? 'Cargando...' : 'No hay clientes activos para mostrar'}
-            </div>
+            <div style={{ textAlign: 'center', padding: 8 }}>{loading ? 'Cargando...' : 'No hay clientes para mostrar'}</div>
           )}
           {filtered.map((c) => {
             const isOpen = expandedClient === c.id;
@@ -369,134 +353,17 @@ export default function ClientesActivos() {
                   aria-expanded={isOpen}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
                 >
-                  <div className="mobile-item-title">{c.name || '-'}</div>
+                  <div className="mobile-item-title">{c.nombre || '-'}</div>
                   <div style={{ opacity: 0.9, fontSize: 12, paddingRight: 10 }}>{isOpen ? '▼' : '▶'}</div>
                 </button>
                 {isOpen && (
                   <div className="mobile-item-details">
                     <div className="kv"><span>Email</span><div>{c.email || '-'}</div></div>
-                    <div className="kv" style={{ marginTop: 6 }}><span>Cédula</span><div>{c.documentNumber || '-'}</div></div>
-                    <div className="kv" style={{ marginTop: 6 }}><span>Celular</span><div>{c.phone || '-'}</div></div>
-                    <div className="kv" style={{ marginTop: 6 }}><span>Admin asignado</span><div>{c.assignedAdmin?.name || '—'}</div></div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => openAssignModal(c)}
-                        style={{ marginRight: 8 }}
-                        title={getAssignedFor(c.id) ? `Asignado a ${getAssignedFor(c.id)?.name || ''}` : 'Asignar administrador'}
-                      >
-                        {getAssignedFor(c.id) ? 'Asignado' : 'Asignar'}
-                      </button>
-                      <button
-                        className="btn btn-primary btn-sm"
-                        onClick={() => openFilesModal(c)}
-                        style={{ marginRight: 8 }}
-                      >
-                        Archivos
-                      </button>
-                      <button className="btn btn-primary btn-sm" onClick={() => onEdit(c)} style={{ marginRight: 8 }}>Editar</button>
-                      <button className="btn btn-secondary btn-sm" onClick={() => onAskDelete(c)}>Eliminar</button>
-                    </div>
-                    
-                    {/* Sección de archivos en móvil */}
-                    <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #394b61' }}>
-                      <h5 style={{ margin: '0 0 12px 0', color: '#e2e8f0', fontSize: '16px' }}>
-                        Archivos y Carpetas
-                      </h5>
-                      
-                      {loadingFiles[c.id] ? (
-                        <div style={{ 
-                          textAlign: 'center', 
-                          padding: '20px',
-                          color: '#cbd5e1'
-                        }}>
-                          <div style={{ 
-                            display: 'inline-block',
-                            width: '16px',
-                            height: '16px',
-                            border: '2px solid #4fd1c5',
-                            borderTop: '2px solid transparent',
-                            borderRadius: '50%',
-                            animation: 'spin 1s linear infinite',
-                            marginRight: '8px'
-                          }}></div>
-                          Cargando archivos...
-                        </div>
-                      ) : (
-                        <div>
-                          {(!clientFiles[c.id] || clientFiles[c.id].length === 0) ? (
-                            <div style={{ 
-                              textAlign: 'center', 
-                              padding: '20px',
-                              color: '#cbd5e1',
-                              fontSize: '14px'
-                            }}>
-                              <div>No hay archivos o carpetas para mostrar</div>
-                              <div style={{ fontSize: '12px', opacity: 0.7, marginTop: '4px' }}>
-                                Haz clic en "Archivos" para gestionar documentos
-                              </div>
-                            </div>
-                          ) : (
-                            <div style={{ 
-                              border: '1px solid #394b61', 
-                              borderRadius: '6px', 
-                              overflow: 'hidden',
-                              background: '#1b263b'
-                            }}>
-                              {clientFiles[c.id]
-                                .filter((f) => {
-                                  const key = f.key || '';
-                                  const folder = folderForClient(c);
-                                  const isRootClientFolder = key === folder && f.isFolder;
-                                  return !isRootClientFolder;
-                                })
-                                .map((f) => {
-                                  const dt = f.lastModified ? new Date(f.lastModified) : (f.createdTime ? new Date(f.createdTime) : null);
-                                  const isFolder = f.isFolder || f.key?.endsWith('/') || f.name?.endsWith('/');  
-                                  
-                                  // Extraer solo el nombre de la carpeta/archivo, sin la ruta completa
-                                  let name = f.name || (f.key || '').split('/').pop();
-                                  if (isFolder && name && folderForClient(c)) {
-                                    const clientPrefix = folderForClient(c).replace(/\/$/, '');
-                                    if (f.key && f.key.startsWith(clientPrefix)) {
-                                      const relativePath = f.key.replace(clientPrefix + '/', '');
-                                      name = relativePath.replace(/\/$/, '');
-                                    }
-                                  }
-                                  
-                                  const sizeKb = typeof f.size === 'number' ? Math.max(1, Math.round(f.size / 1024)) : null;
-                                  
-                                  return (
-                                    <div key={f.key || f.id} style={{ 
-                                      padding: '12px',
-                                      borderBottom: '1px solid #394b61',
-                                      display: 'flex',
-                                      justifyContent: 'space-between',
-                                      alignItems: 'center'
-                                    }}>
-                                      <div>
-                                        <div style={{ 
-                                          color: isFolder ? '#fc771c' : '#e2e8f0',
-                                          fontWeight: '500',
-                                          fontSize: '14px'
-                                        }}>
-                                          {name}
-                                        </div>
-                                        <div style={{ 
-                                          color: '#cbd5e1',
-                                          fontSize: '12px',
-                                          marginTop: '2px'
-                                        }}>
-                                          {isFolder ? 'Carpeta' : 'Archivo'} • {dt ? dt.toLocaleDateString('es-CO') : '-'} • {sizeKb ? `${sizeKb} KB` : '-'}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                    <div className="kv" style={{ marginTop: 6 }}><span>Documento</span><div>{c.numero_documento || '-'}</div></div>
+                    <div className="kv" style={{ marginTop: 6 }}><span>Celular</span><div>{c.telefono || '-'}</div></div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10, gap: 8 }}>
+                      <button className="btn btn-primary btn-sm" onClick={() => onEdit(c)}>Editar</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setConfirmDeleteClient(c)}>Eliminar</button>
                     </div>
                   </div>
                 )}
@@ -507,194 +374,46 @@ export default function ClientesActivos() {
       </div>
 
       {editing && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50,
-          }}
-          onClick={(e) => { if (e.target === e.currentTarget) setEditing(null); }}
-        >
+        <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={(e) => { if (e.target === e.currentTarget) setEditing(null); }}>
           <div className="dash-card" style={{ width: '100%', maxWidth: 560, padding: 16 }}>
-            <div className="dash-header" style={{ marginBottom: 12 }}>
-              <div className="dash-title">Editar cliente</div>
-            </div>
+            <div className="dash-header" style={{ marginBottom: 12 }}><div className="dash-title">Editar cliente</div></div>
             <div className="dash-item">
               <EditForm>
-                <EditField
-                  label="Nombre"
-                  value={editing.name}
-                  onChange={(e) => setEditing((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="Nombre y apellidos"
-                />
-                <EditField
-                  label="Email"
-                  type="email"
-                  value={editing.email}
-                  onChange={() => {}}
-                  inputProps={{ readOnly: true }}
-                />
+                <EditField label="Nombre" value={editing.nombre} onChange={(e) => setEditing((p) => ({ ...p, nombre: e.target.value }))} />
+                <EditField label="Email" type="email" value={editing.email} onChange={() => {}} inputProps={{ readOnly: true }} />
                 <EditRow cols={2}>
-                  <EditField
-                    label="Cédula"
-                    value={editing.documentNumber}
-                    onChange={(e) => setEditing((prev) => ({ ...prev, documentNumber: e.target.value }))}
-                    placeholder="Ej: 80153356"
-                  />
-                  <EditField
-                    label="Celular"
-                    value={editing.phone}
-                    onChange={(e) => setEditing((prev) => ({ ...prev, phone: e.target.value }))}
-                    placeholder="Ej: 300 123 4567"
-                  />
+                  <EditField label="Documento" value={editing.numero_documento} onChange={(e) => setEditing((p) => ({ ...p, numero_documento: e.target.value }))} />
+                  <EditField label="Celular" value={editing.telefono} onChange={(e) => setEditing((p) => ({ ...p, telefono: e.target.value }))} />
                 </EditRow>
               </EditForm>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-              <button className="btn btn-secondary" onClick={() => setEditing(null)} disabled={saving}>
-                Cancelar
-              </button>
-              <button className="btn btn-primary" onClick={onSave} disabled={saving}>
-                {saving ? 'Guardando...' : 'Guardar cambios'}
-              </button>
+              <button className="btn btn-secondary" onClick={() => setEditing(null)} disabled={saving}>Cancelar</button>
+              <button className="btn btn-primary" onClick={onSave} disabled={saving}>{saving ? 'Guardando...' : 'Guardar cambios'}</button>
             </div>
           </div>
         </div>
       )}
 
-       {/* Componente de gestión de archivos */}
-      {filesOpen && (
-        <div 
-          style={{ 
-            position: 'fixed', 
-            inset: 0, 
-            background: 'rgba(0,0,0,0.6)', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            zIndex: 60, 
-            padding: 16 
-          }}
-          onClick={closeFilesModal}
-        >
-          <div 
-            style={{ 
-              width: '100%', 
-              maxWidth: '95vw', 
-              maxHeight: '95vh',
-              background: 'transparent'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <MiExpediente 
-              selectedClient={filesClient}
-              isModal={true}
-              onClose={closeFilesModal}
-            />
-          </div>
-        </div>
-      )}
-
-      {assignOpen && assignClient && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 16 }}
-          onClick={(e) => { if (e.target === e.currentTarget) { closeAssignModal(); } }}
-        >
-          <div className="dash-card" style={{ width: '100%', maxWidth: 560 }}>
-            <div className="dash-header" style={{ marginBottom: 8 }}>
-              <div className="dash-title">Asignar administrador</div>
-            </div>
+      {confirmDeleteClient && (
+        <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 65, padding: 16 }} onClick={(e) => { if (e.target === e.currentTarget) setConfirmDeleteClient(null); }}>
+          <div className="dash-card" style={{ width: '100%', maxWidth: 480 }}>
+            <div className="dash-header" style={{ marginBottom: 8 }}><div className="dash-title">Confirmar eliminación</div></div>
             <div className="dash-item" style={{ display: 'grid', gap: 10 }}>
-              <div style={{ fontSize: 14, opacity: 0.85 }}>Cliente: <strong>{assignClient.name}</strong> <span style={{ opacity: 0.7 }}>({assignClient.id})</span></div>
-              {adminsError && (
-                <div style={{ background: '#7f1d1d', color: '#fecaca', padding: 8, borderRadius: 6 }}>{adminsError}</div>
-              )}
-              <label style={{ display: 'grid', gap: 6 }}>
-                <span>Selecciona un admin</span>
-                <select
-                  value={selectedAdminId}
-                  onChange={(e)=>setSelectedAdminId(e.target.value)}
-                  disabled={adminsLoading}
-                  style={{ background: '#1b263b', color: '#e2e8f0', border: '1px solid rgba(148,163,184,0.35)', borderRadius: 8, padding: '8px 10px' }}
-                >
-                  <option value="">— Sin asignar —</option>
-                  {admins.map((a)=> (
-                    <option key={a.id} value={a.id}>{a.name} — {a.email}</option>
-                  ))}
-                </select>
-              </label>
+              <div>¿Eliminar al cliente <strong>{confirmDeleteClient.nombre || confirmDeleteClient.email}</strong>?</div>
+              {deleteError && <div style={{ background: '#7f1d1d', color: '#fecaca', padding: 8, borderRadius: 6 }}>{deleteError}</div>}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-              <button className="btn btn-secondary" onClick={closeAssignModal} disabled={adminsLoading}>Cancelar</button>
-              <button className="btn btn-primary" onClick={onSaveAssignment} disabled={adminsLoading}>Guardar</button>
+              <button className="btn btn-secondary" onClick={() => setConfirmDeleteClient(null)} disabled={deleting}>Cancelar</button>
+              <button className="btn btn-primary" onClick={onConfirmDelete} disabled={deleting}>{deleting ? 'Eliminando...' : 'Eliminar'}</button>
             </div>
           </div>
         </div>
       )}
 
-      {confirmDeleteOpen && confirmDeleteClient && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 65, padding: 16 }}
-          onClick={(e) => { if (e.target === e.currentTarget) { closeDeleteModal(); } }}
-        >
-          <div className="dash-card" style={{ width: '100%', maxWidth: 520 }}>
-            <div className="dash-header" style={{ marginBottom: 8 }}>
-              <div className="dash-title">Confirmar eliminación</div>
-            </div>
-              <div className="dash-item" style={{ display: 'grid', gap: 10 }}>
-                <div>
-                  ¿Eliminar al cliente <strong>{confirmDeleteClient.name || confirmDeleteClient.email || confirmDeleteClient.id}</strong>?
-                </div>
-                <div style={{ fontSize: 13, opacity: 0.85 }}>
-                  Esta acción eliminará el contenedor del cliente y su carpeta S3 asociada (clientes/{String(confirmDeleteClient.documentNumber || '').trim()}).
-                </div>
-                {/* Hidden username trap to discourage browser autofill on page search */}
-                <input
-                  type="text"
-                  autoComplete="username"
-                  value=" "
-                  readOnly
-                  aria-hidden="true"
-                  style={{ position: 'absolute', opacity: 0, height: 0, width: 0, pointerEvents: 'none' }}
-                />
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <span>Contraseña de eliminación</span>
-                  <input
-                    type="password"
-                    name="delete-confirm"
-                    autoComplete="new-password"
-                    data-lpignore="true"
-                    data-1p-ignore="true"
-                    value={deletePass}
-                    onChange={(e)=>setDeletePass(e.target.value)}
-                    placeholder="eliminarclientekoop"
-                    style={{ background: '#1b263b', color: '#e2e8f0', border: '1px solid rgba(148,163,184,0.35)', borderRadius: 8, padding: '8px 10px' }}
-                  />
-                </label>
-                {deleteError && (
-                  <div style={{ background: '#7f1d1d', color: '#fecaca', padding: 8, borderRadius: 6 }}>{deleteError}</div>
-                )}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-                <button className="btn btn-secondary" onClick={closeDeleteModal} disabled={deleting}>Cancelar</button>
-                <button className="btn btn-primary" onClick={onConfirmDelete} disabled={deleting || !deletePass}>{deleting ? 'Eliminando...' : 'Eliminar'}</button>
-              </div>
-          </div>
-        </div>
+      {showCreateModal && (
+        <CreateClientModal onClose={() => setShowCreateModal(false)} onSubmit={handleCreate} />
       )}
-      
-      {/* Estilos CSS */}
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }

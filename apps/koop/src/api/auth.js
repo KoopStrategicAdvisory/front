@@ -1,13 +1,12 @@
 // En dev usamos "/api" para pasar por el proxy de Vite; en prod puedes definir VITE_API_BASE
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
-export async function registerApi({ name, email, password, roles }) {
-  console.log(`API BASE: ${API_BASE}/auth/register`);
+export async function registerApi({ name, email, password }) {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ name, email, password, roles }),
+    body: JSON.stringify({ nombre: name, email, password }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || 'Error en registro');
@@ -25,14 +24,12 @@ export async function refreshApi() {
 }
 
 export async function loginApi({ email, password }) {
-  console.log(`API BASE: ${API_BASE}/auth/login`);
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ email, password }),
   });
-  console.log(res);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || 'Credenciales inválidas');
   return data;
@@ -53,4 +50,37 @@ export async function logoutApi() {
     throw new Error(msg);
   }
   return true;
+}
+
+export async function forgotPasswordApi({ email }) {
+  const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || 'No se pudo iniciar la recuperación de contraseña');
+  return data;
+}
+
+export async function resetPasswordApi({ token, password }) {
+  const res = await fetch(`${API_BASE}/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ token, password }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || 'No se pudo restablecer la contraseña');
+  return data;
+}
+
+export async function verifyEmailApi(token) {
+  const res = await fetch(`${API_BASE}/auth/verify-email?token=${encodeURIComponent(token)}`, {
+    credentials: 'include',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || 'No se pudo verificar el correo');
+  return data;
 }

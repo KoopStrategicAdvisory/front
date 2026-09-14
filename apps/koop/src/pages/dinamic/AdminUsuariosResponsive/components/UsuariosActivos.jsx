@@ -1,30 +1,14 @@
 import { useState, useMemo } from 'react';
 
-const ALLOWED_ROLES = ['admin', 'lawyer', 'client', 'user'];
-function normalizeRoles(value, { defaultRole = 'user' } = {}) {
-  const normalizedDefault = String(defaultRole || 'user').trim().toLowerCase();
-  const safeDefault = ALLOWED_ROLES.includes(normalizedDefault) ? normalizedDefault : 'user';
-  const roles = Array.isArray(value) ? value : [value];
-  const normalized = roles
-    .map((role) => String(role || '').trim().toLowerCase())
-    .filter((role) => ALLOWED_ROLES.includes(role));
-  if (normalized.includes('admin')) return ['admin'];
-  if (normalized.includes('lawyer')) return ['lawyer'];
-  if (normalized.includes('client')) return ['client'];
-  if (normalized.includes('user')) return ['user'];
-  return [safeDefault];
-}
-
 export default function UsuariosActivos({
   users = [],
   loading = false,
   currentUserId,
   updating,
-  roleUpdating,
   deleting,
+  roleOptions = [],
   onToggleActive,
-  onOpenClientModal,
-  onChangeRole,
+  onToggleRole,
   onRemoveUser,
   initialOpen = false,
 }) {
@@ -47,51 +31,40 @@ export default function UsuariosActivos({
   };
 
   const actives = useMemo(() => {
-    const isInactive = (u) => u?.active === false || u?.isActive === false;
     const byCreatedAtDesc = (a, b) => {
-      const atA = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const atB = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+      const atA = a?.created_at ? new Date(a.created_at).getTime() : 0;
+      const atB = b?.created_at ? new Date(b.created_at).getTime() : 0;
       return atB - atA;
     };
-    return (users || []).filter((u) => !isInactive(u)).sort(byCreatedAtDesc);
+    return (users || []).filter((u) => u?.active !== false).sort(byCreatedAtDesc);
   }, [users]);
 
   const renderRow = (u) => {
-    const created = u.createdAt ? new Date(u.createdAt) : null;
-    const roles = normalizeRoles(u.roles);
-    const hasAdminRole = roles.includes('admin');
-    const isLawyer = roles.includes('lawyer');
-    const isClient = roles.includes('client');
-    const isActive = u.active !== false && u.isActive !== false;
-    const isSelf = currentUserId === u.id;
-    const roleIsUser = roles.includes('user');
-    const rolesLabel = roles.length > 0 ? roles.join(', ') : '-';
+    const created = u.created_at ? new Date(u.created_at) : null;
+    const roles = Array.isArray(u.roles) ? u.roles : [];
+    const rolesLabel = roles.length > 0 ? roles.map((r) => r.nombre).join(', ') : '-';
+    const isSelf = String(currentUserId ?? '') === String(u.id ?? '');
     const rolePanelOpen = rolePanel === u.id;
-    const roleUpdatingCurrent = roleUpdating?.id === u.id;
+
     return (
       <tr key={u.id}>
-        <td>{u.name || '-'}</td>
+        <td>{u.nombre || '-'}</td>
         <td>{u.email}</td>
         <td>{rolesLabel}</td>
         <td>
-          <span className={`me-badge ${isActive ? 'me-badge-success' : 'me-badge-error'}`}>
-            {isActive ? 'Activo' : 'Inactivo'}
-          </span>
+          <span className="me-badge me-badge-success">Activo</span>
         </td>
         <td>{created ? created.toLocaleString() : '-'}</td>
         <td>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <button
               className="btn btn-primary btn-sm"
-              onClick={() => onToggleActive?.(u.id, !isActive)}
+              onClick={() => onToggleActive?.(u.id, false)}
               disabled={updating === u.id}
             >
-              {updating === u.id ? 'Guardando...' : isActive ? 'Desactivar' : 'Activar'}
+              {updating === u.id ? 'Guardando...' : 'Desactivar'}
             </button>
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => toggleRolePanel(u.id)}
-            >
+            <button className="btn btn-secondary btn-sm" onClick={() => toggleRolePanel(u.id)}>
               {rolePanelOpen ? 'Cerrar roles' : 'Administrar roles'}
             </button>
             <button
@@ -105,44 +78,24 @@ export default function UsuariosActivos({
           </div>
           {rolePanelOpen && (
             <div style={rolePanelStyle}>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  onOpenClientModal?.(u);
-                  toggleRolePanel(u.id);
-                }}
-              >
-                Convertir a cliente
-              </button>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => onChangeRole?.(u.id, 'admin')}
-                disabled={roleUpdatingCurrent || hasAdminRole}
-              >
-                {roleUpdatingCurrent && !hasAdminRole ? 'Guardando...' : 'Hacer admin'}
-              </button>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => onChangeRole?.(u.id, 'lawyer')}
-                disabled={roleUpdatingCurrent || isLawyer}
-              >
-                {roleUpdatingCurrent && !isLawyer ? 'Guardando...' : 'Convertir a abogado'}
-              </button>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => onChangeRole?.(u.id, 'client')}
-                disabled={roleUpdatingCurrent || isClient}
-              >
-                {roleUpdatingCurrent && !isClient ? 'Guardando...' : 'Asignar rol cliente'}
-              </button>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => onChangeRole?.(u.id, 'user')}
-                disabled={roleUpdatingCurrent || roleIsUser || isSelf}
-                title={isSelf ? 'No puedes degradarte a ti mismo' : undefined}
-              >
-                {roleUpdatingCurrent && !roleIsUser ? 'Guardando...' : 'Degradar a usuario'}
-              </button>
+              {roleOptions.length === 0 && (
+                <span style={{ fontSize: 13, opacity: 0.7 }}>No hay roles disponibles en el catálogo</span>
+              )}
+              {roleOptions.map((role) => {
+                const hasRole = roles.some((r) => r.id === role.id);
+                return (
+                  <button
+                    key={role.id}
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => onToggleRole?.(u.id, role.id, hasRole)}
+                    disabled={isSelf}
+                    title={isSelf ? 'No puedes modificar tus propios roles' : undefined}
+                    style={hasRole ? { borderColor: '#4fd1c5', color: '#4fd1c5' } : undefined}
+                  >
+                    {hasRole ? `✓ ${role.nombre}` : role.nombre}
+                  </button>
+                );
+              })}
             </div>
           )}
         </td>
@@ -190,5 +143,3 @@ export default function UsuariosActivos({
     </div>
   );
 }
-
-

@@ -1,5 +1,7 @@
 # My Turborepo
 
+> **Portal KOOP Strategic Advisory** — Ver [fase1.md](fase1.md) para la documentación técnica completa de la Fase 1 (integración del portal, módulos, providers y paquetes).
+
 Template scaffold for professional, highly decoupled web applications with React + Vite, shared UI, flexible state management, reusable infrastructure packages, and a dedicated Storybook app to start developing quickly.
 
 ## Quick Start

@@ -8,7 +8,7 @@ import React, {
 } from 'react';
 import { useAuthSession } from '@repo/auth';
 import { refreshApi } from '../api/auth';
-import { koopAuthProvider } from '../auth/KoopCustomApiProvider';
+import { koopAuthProvider, normalizeRoles } from '../auth/KoopCustomApiProvider';
 import { setupAxiosInterceptors } from '../api/axios';
 import type { KoopUser, KoopRole } from '@repo/types';
 
@@ -30,20 +30,11 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const ALLOWED_ROLES: KoopRole[] = ['admin', 'lawyer', 'user', 'client'];
-
-function normalizeRoles(value: unknown, defaultRole: KoopRole = 'user'): KoopRole[] {
-  const safeDefault: KoopRole = ALLOWED_ROLES.includes(defaultRole) ? defaultRole : 'user';
-  const roles = Array.isArray(value) ? value : [value];
-  const normalized = roles
-    .map((r) => String(r || '').trim().toLowerCase() as KoopRole)
-    .filter((r) => ALLOWED_ROLES.includes(r));
-  if (normalized.includes('admin')) return ['admin'];
-  if (normalized.includes('lawyer')) return ['lawyer'];
-  if (normalized.includes('client')) return ['client'];
-  if (normalized.includes('user')) return ['user'];
-  return [safeDefault];
-}
+// normalizeRoles (con el alias de roles en espanol -> admin/lawyer/client/user)
+// vive en KoopCustomApiProvider.ts. Antes habia una segunda copia aqui, sin el
+// alias, que sobreescribia la normalizacion ya hecha al hacer login: el rol
+// terminaba resuelto como 'user' para cualquier usuario real (super_admin,
+// socio, abogado...). Se importa la unica implementacion en vez de duplicarla.
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const { session, setSession, clearSession } = useAuthSession();
@@ -87,7 +78,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     try {
       const authSession = await koopAuthProvider.signUp(name, email, password, roles);
       if (authSession) setSession(authSession);
-      return { ok: true };
+      return { ok: true, data: authSession ? { accessToken: authSession.accessToken } : undefined };
     } catch (err: unknown) {
       return { ok: false, error: (err as Error).message };
     } finally {
@@ -117,10 +108,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Configurar interceptores de axios una sola vez
+  // Configurar interceptores de axios una sola vez. Se hace en el cuerpo del
+  // render (guardado por un ref), NO dentro de un useEffect: los efectos de
+  // componentes hijos (p.ej. el fetch inicial de la pagina de Expedientes)
+  // se disparan antes que los efectos de este provider (React corre los
+  // useEffect de abajo hacia arriba). Si el interceptor se registraba en un
+  // useEffect de aqui, la primera tanda de peticiones en una carga en frio
+  // salia sin el header Authorization -> 401 "No autenticado" aunque hubiera
+  // sesion valida en sessionStorage.
   const interceptorsReady = useRef(false);
-  useEffect(() => {
-    if (interceptorsReady.current) return;
+  if (!interceptorsReady.current) {
     setupAxiosInterceptors({
       getAccessToken: () => sessionRef.current?.accessToken ?? null,
       setAccessToken: (newToken: string) => {
@@ -130,8 +127,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       onLogout: () => logoutRef.current(),
     });
     interceptorsReady.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }
 
   const value = useMemo<AuthContextValue>(
     () => ({

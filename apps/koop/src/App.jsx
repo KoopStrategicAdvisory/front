@@ -33,8 +33,13 @@ import MisCasos from './pages/dinamic/MisCasos/index.jsx';
 import Logout from './pages/dinamic/auth/Logout/index.jsx';
 import SpotifyCallback from './pages/dinamic/SpotifyCallback/index.jsx';
 import Consultas from './pages/dinamic/Consultas/index.jsx';
+import Expedientes from './pages/dinamic/Expedientes/index.jsx';
+import ExpedienteDetalle from './pages/dinamic/ExpedienteDetalle/index.jsx';
+import KanbanPage from './pages/dinamic/Kanban/index.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
+import RequireRole from './components/RequireRole.jsx';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { AccessProvider } from './context/AccessContext';
 import { KoopAuthProvider } from './auth/KoopAuthProvider';
 import api from './api/axios';
 import Navbar from './components/Navbar.jsx';
@@ -56,18 +61,9 @@ function App() {
 
   //Acá se manipula el navbar para que no aparezca en login, register y dashboard
 
-  const AdminLawyerRoute = ({ children }) => {
-    const { isAuthenticated, user } = useAuth();
-    const roles = Array.isArray(user?.roles) ? user.roles : [user?.roles];
-    const allowed = roles.some((role) => ['admin', 'lawyer'].includes(String(role || '').toLowerCase()));
-    if (!isAuthenticated) {
-      return <Navigate to="/login" replace />;
-    }
-    if (!allowed) {
-      return <Navigate to="/dashboard" replace />;
-    }
-    return children;
-  };
+  const AdminLawyerRoute = ({ children }) => (
+    <RequireRole roles={['admin', 'lawyer']}>{children}</RequireRole>
+  );
 
   // Shell: layout básico (Navbar + Rutas)
   const Shell = () => {
@@ -120,25 +116,25 @@ function App() {
           <Route
             path="/admin/usuarios"
             element={
-              <ProtectedRoute>
+              <RequireRole roles={['admin']}>
                 <AdminUsuarios />
-              </ProtectedRoute>
+              </RequireRole>
             }
           />
           <Route
             path="/admin/clientes-activos"
             element={
-              <ProtectedRoute>
+              <RequireRole roles={['admin']}>
                 <ClientesActivos />
-              </ProtectedRoute>
+              </RequireRole>
             }
           />
           <Route
             path="/admin/tareas"
             element={
-              <ProtectedRoute>
+              <AdminLawyerRoute>
                 <AdminTareas />
-              </ProtectedRoute>
+              </AdminLawyerRoute>
             }
           />
           <Route
@@ -182,6 +178,30 @@ function App() {
               </AdminLawyerRoute>
             }
           />
+          <Route
+            path="/admin/expedientes"
+            element={
+              <ProtectedRoute>
+                <Expedientes />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/expedientes/:id"
+            element={
+              <ProtectedRoute>
+                <ExpedienteDetalle />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/kanban"
+            element={
+              <AdminLawyerRoute>
+                <KanbanPage />
+              </AdminLawyerRoute>
+            }
+          />
           {/* Legacy .html paths -> redirect to SPA routes */}
           <Route path="/index.html" element={<Navigate to="/" replace />} />
           <Route path="/derecho.html" element={<Navigate to="/derecho" replace />} />
@@ -204,11 +224,13 @@ function App() {
   return (
     <KoopAuthProvider>
       <AuthProvider>
-        <FontProvider>
-          <BrowserRouter>
-            <Shell />
-          </BrowserRouter>
-        </FontProvider>
+        <AccessProvider>
+          <FontProvider>
+            <BrowserRouter>
+              <Shell />
+            </BrowserRouter>
+          </FontProvider>
+        </AccessProvider>
       </AuthProvider>
     </KoopAuthProvider>
   );

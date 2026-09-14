@@ -9,12 +9,35 @@ interface KoopCredentials {
 
 const ALLOWED_ROLES: KoopRole[] = ['admin', 'lawyer', 'user', 'client'];
 
-function normalizeRoles(value: unknown, defaultRole: KoopRole = 'user'): KoopRole[] {
+// El catalogo real de roles (seed.sql, generado desde el Excel) quedo en
+// espanol: admin, super_admin, socio, abogado, asociado, junior, paralegal,
+// secretario, contador, cliente, emprendedor. El front (RBAC en
+// AccessContext) solo entiende 4 buckets genericos en ingles. Sin este
+// alias, un usuario real (p.ej. roles ['super_admin','socio']) caia siempre
+// en el default 'user' porque ninguno de esos nombres coincidia con
+// ALLOWED_ROLES, perdiendo todo permiso de admin/abogado en la UI. Ajusta
+// este mapa si cambian los nombres de roles en la base de datos (debe
+// reflejar ROLE_ALIASES en back/src/middleware/auth.js).
+const ROLE_ALIASES: Record<string, KoopRole> = {
+  admin: 'admin',
+  super_admin: 'admin',
+  lawyer: 'lawyer',
+  abogado: 'lawyer',
+  socio: 'lawyer',
+  asociado: 'lawyer',
+  junior: 'lawyer',
+  paralegal: 'lawyer',
+  client: 'client',
+  cliente: 'client',
+  user: 'user',
+};
+
+export function normalizeRoles(value: unknown, defaultRole: KoopRole = 'user'): KoopRole[] {
   const safeDefault: KoopRole = ALLOWED_ROLES.includes(defaultRole) ? defaultRole : 'user';
   const roles = Array.isArray(value) ? value : [value];
   const normalized = roles
-    .map((r) => String(r || '').trim().toLowerCase() as KoopRole)
-    .filter((r) => ALLOWED_ROLES.includes(r));
+    .map((r) => ROLE_ALIASES[String(r || '').trim().toLowerCase()])
+    .filter((r): r is KoopRole => Boolean(r) && ALLOWED_ROLES.includes(r));
   if (normalized.includes('admin')) return ['admin'];
   if (normalized.includes('lawyer')) return ['lawyer'];
   if (normalized.includes('client')) return ['client'];

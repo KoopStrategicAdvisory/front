@@ -111,6 +111,8 @@ export default function Navbar() {
                   <Link to="/dashboard">Perfil</Link>
                   {isAdmin && <Link to="/admin/clientes-activos">Clientes</Link>}
                   <Link to="/mi-expediente">{isAdmin ? 'Mis expedientes' : 'Mi expediente'}</Link>
+                  {(isAdmin || isLawyer) && <Link to="/admin/expedientes">Expedientes</Link>}
+                  {(isAdmin || isLawyer) && <Link to="/admin/kanban">Kanban</Link>}
                   {isAdmin && <Link to="/admin/tareas">Tareas</Link>}
                   {(isAdmin || isLawyer) && <Link to="/consultas">Consultas</Link>}
                   <Link to="/mis-casos">Mis casos</Link>

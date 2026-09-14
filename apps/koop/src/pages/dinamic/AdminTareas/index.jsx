@@ -4,9 +4,9 @@ import '../../../styles/mi-expediente.css';
 import { EditForm, EditRow, EditField, EditTextArea, EditSelect } from '../../../components/common/EditFormKit';
 
 function getUserInfo(userId, admins) {
-  const admin = admins.find((adminItem) => adminItem.id === userId);
+  const admin = admins.find((adminItem) => String(adminItem.id) === String(userId));
   if (admin) {
-    const name = admin.name || admin.email || 'Usuario';
+    const name = admin.nombre || admin.email || 'Usuario';
     const initials = name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
     const colors = ['#0ea5e9', '#22d3ee', '#a78bfa', '#f59e0b', '#10b981', '#ef4444'];
     const colorIndex = admins.indexOf(admin) % colors.length;
@@ -23,19 +23,15 @@ function isOverdue(iso) {
   try { return new Date(iso) < new Date(new Date().toDateString()); } catch { return false; }
 }
 
-function TaskFormFields({ formData, setFormData, admins }) {
-  const adminOptions = admins.map((admin) => ({ value: admin.id, label: admin.name || admin.email || 'Administrador' }));
+function TaskFormFields({ formData, setFormData, admins, estados, prioridades }) {
+  const adminOptions = admins.map((admin) => ({ value: admin.id, label: admin.nombre || admin.email || 'Administrador' }));
+  const prioOptions = prioridades.map((p) => ({ value: p.id, label: p.nombre }));
+  const estadoOptions = estados.map((e) => ({ value: e.id, label: e.nombre }));
 
   const handleChange = (field) => (event) => {
     const { value } = event.target;
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
-
-  const priorityOptions = [
-    { value: 'baja', label: 'Baja' },
-    { value: 'media', label: 'Media' },
-    { value: 'alta', label: 'Alta' },
-  ];
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -49,7 +45,7 @@ function TaskFormFields({ formData, setFormData, admins }) {
           inputProps={{ placeholder: 'Título de la tarea' }}
         />
         <EditField
-          label="Cliente *"
+          label="Cliente / Observaciones"
           value={formData.client}
           onChange={handleChange('client')}
           inputProps={{ placeholder: 'Nombre del cliente' }}
@@ -67,11 +63,21 @@ function TaskFormFields({ formData, setFormData, admins }) {
       <EditRow cols={2}>
         <EditSelect
           label="Prioridad"
-          value={formData.priority}
-          onChange={handleChange('priority')}
-          options={priorityOptions}
-          placeholder={null}
+          value={formData.priorityId || ''}
+          onChange={handleChange('priorityId')}
+          options={prioOptions}
+          placeholder={prioOptions.length ? 'Selecciona prioridad' : 'Cargando...'}
         />
+        <EditSelect
+          label="Estado"
+          value={formData.estadoId || ''}
+          onChange={handleChange('estadoId')}
+          options={estadoOptions}
+          placeholder={estadoOptions.length ? 'Selecciona estado' : 'Cargando...'}
+        />
+      </EditRow>
+
+      <EditRow cols={2}>
         <EditField
           label="Fecha límite"
           type="date"
@@ -79,31 +85,30 @@ function TaskFormFields({ formData, setFormData, admins }) {
           onChange={handleChange('due')}
           inputProps={{ min: today }}
         />
-      </EditRow>
-
-      <EditRow cols={2}>
         <EditSelect
           label="Asignar a"
           value={formData.assignee || ''}
           onChange={handleChange('assignee')}
           options={adminOptions}
-          placeholder={admins.length ? 'Selecciona un administrador' : 'No hay administradores disponibles'}
+          placeholder={admins.length ? 'Selecciona un usuario' : 'No hay usuarios disponibles'}
           selectProps={{ disabled: !admins.length }}
         />
+      </EditRow>
+
+      <EditRow cols={2}>
         <EditField
           label="Tags (separados por comas)"
           value={formData.tags || ''}
           onChange={handleChange('tags')}
           inputProps={{ placeholder: 'Laboral, Audiencia, Civil' }}
         />
+        <EditField
+          label="Radicado"
+          value={formData.radicado || ''}
+          onChange={handleChange('radicado')}
+          inputProps={{ placeholder: 'Número de radicado (opcional)' }}
+        />
       </EditRow>
-
-      <EditField
-        label="Radicado"
-        value={formData.radicado || ''}
-        onChange={handleChange('radicado')}
-        inputProps={{ placeholder: 'Número de radicado (opcional)' }}
-      />
     </EditForm>
   );
 }
@@ -111,7 +116,10 @@ function TaskFormFields({ formData, setFormData, admins }) {
 export default function AdminTareas() {
   const {
     isAdmin,
+    canAccess,
     admins,
+    estados,
+    prioridades,
     loading,
     q,
     setQ,
@@ -143,15 +151,17 @@ export default function AdminTareas() {
     handleDeleteTask,
     handleStatusChange,
     resetForm,
+    setShowSuccessNotice,
+    setShowErrorNotice,
   } = useAdminTasks();
 
-  if (!isAdmin) {
+  if (!canAccess) {
     return (
       <div className="dash-page" style={{ padding: 40 }}>
         <div className="dash-card" style={{ maxWidth: 560 }}>
           <h2 className="dash-title">Acceso restringido</h2>
           <p style={{ marginTop: 12 }}>
-            Esta sección está disponible solo para administradores.
+            Esta sección está disponible solo para administradores y abogados.
           </p>
         </div>
       </div>
@@ -242,7 +252,7 @@ export default function AdminTareas() {
           >
             {admins.map((admin) => (
               <option key={admin.id} value={admin.id}>
-                {admin.name || admin.email} (Admin)
+                {admin.nombre || admin.email} (Admin)
               </option>
             ))}
           </select>
@@ -254,7 +264,6 @@ export default function AdminTareas() {
           >
             <option value="all">Todos los estados</option>
             <option value="pendiente">Pendiente</option>
-            <option value="en-curso">En curso</option>
             <option value="hecho">Hecho</option>
           </select>
         </div>
@@ -297,7 +306,7 @@ export default function AdminTareas() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' }}>
                 {filteredTasks.map((t) => {
                   const u = getUserInfo(t.assignee, admins);
-                  const statusTxt = t.status === 'en-curso' ? 'En curso' : t.status === 'hecho' ? 'Hecho' : 'Pendiente';
+                  const statusTxt = t.status === 'hecho' ? 'Hecho' : 'Pendiente';
                   return (
                     <div
                       key={t.id}
@@ -328,10 +337,12 @@ export default function AdminTareas() {
                       </div>
 
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
-                        <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', background: t.priority === 'alta' ? 'rgba(239, 68, 68, 0.15)' : t.priority === 'media' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(34, 197, 94, 0.15)', color: t.priority === 'alta' ? '#fecaca' : t.priority === 'media' ? '#fde68a' : '#bbf7d0', border: `1px solid ${t.priority === 'alta' ? 'rgba(239, 68, 68, 0.3)' : t.priority === 'media' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(34, 197, 94, 0.3)'}` }}>
-                          {t.priority.toUpperCase()}
-                        </span>
-                        <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', background: t.status === 'hecho' ? 'rgba(34, 197, 94, 0.15)' : t.status === 'en-curso' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(156, 163, 175, 0.15)', color: t.status === 'hecho' ? '#bbf7d0' : t.status === 'en-curso' ? '#93c5fd' : '#d1d5db', border: `1px solid ${t.status === 'hecho' ? 'rgba(34, 197, 94, 0.3)' : t.status === 'en-curso' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(156, 163, 175, 0.3)'}` }}>
+                        {t.priorityId !== '' && (
+                          <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', background: 'rgba(79, 209, 197, 0.15)', color: '#67e8f9', border: '1px solid rgba(79, 209, 197, 0.3)' }}>
+                            PRIORIDAD #{t.priorityId}
+                          </span>
+                        )}
+                        <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', background: t.status === 'hecho' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(156, 163, 175, 0.15)', color: t.status === 'hecho' ? '#bbf7d0' : '#d1d5db', border: `1px solid ${t.status === 'hecho' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(156, 163, 175, 0.3)'}` }}>
                           {statusTxt}
                         </span>
                         <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', background: isOverdue(t.due) ? 'rgba(239, 68, 68, 0.15)' : 'rgba(79, 209, 197, 0.15)', color: isOverdue(t.due) ? '#fecaca' : '#67e8f9', border: `1px solid ${isOverdue(t.due) ? 'rgba(239, 68, 68, 0.3)' : 'rgba(79, 209, 197, 0.3)'}` }}>
@@ -372,7 +383,6 @@ export default function AdminTareas() {
                             style={{ fontSize: '11px', padding: '4px 8px', background: '#1e2a3a', border: '1px solid #394b61', borderRadius: '6px', color: '#e2e8f0' }}
                           >
                             <option value="pendiente">Pendiente</option>
-                            <option value="en-curso">En curso</option>
                             <option value="hecho">Hecho</option>
                           </select>
 
@@ -423,10 +433,7 @@ export default function AdminTareas() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
           <div style={{ background: '#1e2a3a', borderRadius: '12px', padding: '24px', maxWidth: '500px', width: '90%', border: '1px solid #394b61', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
             <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: '600', color: '#e2e8f0' }}>➕ Nueva Tarea</h3>
-            <div style={{ fontSize: '10px', color: '#9fb3cc', marginBottom: '10px', padding: '8px', background: '#2a3a51', borderRadius: '4px' }}>
-              Debug: Admins: {admins.length}, Assignee: {formData.assignee || 'ninguno'}
-            </div>
-            <TaskFormFields formData={formData} setFormData={setFormData} admins={admins} />
+            <TaskFormFields formData={formData} setFormData={setFormData} admins={admins} estados={estados} prioridades={prioridades} />
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
               <button className="btn btn-secondary" onClick={() => { closeCreateModal(); resetForm(); }} style={{ padding: '10px 20px' }}>Cancelar</button>
               <button className="btn btn-primary" onClick={handleCreateTask} style={{ padding: '10px 20px' }}>Crear Tarea</button>
@@ -439,7 +446,7 @@ export default function AdminTareas() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
           <div style={{ background: '#1e2a3a', borderRadius: '12px', padding: '24px', maxWidth: '500px', width: '90%', border: '1px solid #394b61', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
             <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: '600', color: '#e2e8f0' }}>✏️ Editar Tarea</h3>
-            <TaskFormFields formData={formData} setFormData={setFormData} admins={admins} />
+            <TaskFormFields formData={formData} setFormData={setFormData} admins={admins} estados={estados} prioridades={prioridades} />
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
               <button className="btn btn-secondary" onClick={() => { closeEditModal(); resetForm(); }} style={{ padding: '10px 20px' }}>Cancelar</button>
               <button className="btn btn-primary" onClick={handleEditTask} style={{ padding: '10px 20px' }}>Actualizar Tarea</button>
