@@ -173,22 +173,10 @@ export default function AdminDashboard() {
     setIsComposeOpen(false);
   };
 
-  const primaryButtonStyle = {
-    padding: '10px 14px',
-    fontSize: '14px',
-    minHeight: '52px',
-    borderRadius: '10px',
-    fontWeight: 600,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-  };
-
   const adminPrimaryActions = [
-    { key: 'clientes', label: 'Clientes', to: '/admin/clientes-activos' },
-    { key: 'procesos', label: 'Procesos', to: '/mis-casos' },
-    { key: 'publicaciones', label: 'Publicaciones Procesales', href: 'https://koop.com/publicaciones-procesales' },
+    { key: 'clientes', label: 'Clientes', to: '/admin/clientes-activos', icon: '👥' },
+    { key: 'procesos', label: 'Procesos', to: '/mis-casos', icon: '⚖️' },
+    { key: 'publicaciones', label: 'Publicaciones Procesales', href: 'https://koop.com/publicaciones-procesales', icon: '📰' },
   ];
 
   const selectedDateLabel = useMemo(
@@ -265,19 +253,35 @@ export default function AdminDashboard() {
           .admin-main-left { grid-column: span 1; display: flex; flex-direction: column; gap: 16px; }
           @media (min-width: 1024px) { .admin-main-left { grid-column: span 2; } }
           .admin-main-right { display: flex; flex-direction: column; gap: 16px; }
-          .admin-clients-list { max-height: 200px; overflow-y: auto; border: 1px solid rgba(148,163,184,0.35); border-radius: 8px; padding: 8px; }
-          .admin-clients-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 4px; border-bottom: 1px solid rgba(148,163,184,0.15); }
+          .admin-clients-list { max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 8px; }
+          .admin-clients-item { display: flex; align-items: center; justify-content: space-between; padding: 7px 6px; border-bottom: 1px solid var(--border-subtle); border-radius: 6px; transition: background 0.15s ease; }
+          .admin-clients-item:hover { background: rgba(148,163,184,0.06); }
           .admin-clients-item:last-child { border-bottom: none; }
           /* Oculta el panel de redaccion en pantallas pequeñas para usar modal */
           @media (max-width: 1023px) { .compose-panel { display: none; } }
           /* Modal flotante para redaccion en móvil */
-          .compose-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
-          .compose-modal { background: #0f172a; color: #e2e8f0; width: min(680px, 92vw); border-radius: 14px; padding: 16px; box-shadow: 0 10px 32px rgba(0,0,0,0.45); max-height: 100dvh; overflow: auto; }
+          .compose-overlay { position: fixed; inset: 0; background: rgba(4,8,16,0.68); backdrop-filter: blur(3px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+          .compose-modal { background: linear-gradient(180deg, #101c2e 0%, #0b1524 100%); color: var(--text-primary); width: min(680px, 92vw); border-radius: var(--r-lg); padding: 20px; border: 1px solid var(--border-subtle); box-shadow: var(--shadow-lg); max-height: 100dvh; overflow: auto; }
           @media (min-width: 1024px) { .compose-overlay { display: none; } }
         `}</style>
 
-        <div className="dash-header">
-          <div className="dash-title">{displayName}</div>
+        <div className="dash-header" style={{ alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: 16, flexShrink: 0,
+              background: 'linear-gradient(135deg, var(--accent-gold-soft), var(--accent-gold) 65%, var(--accent-gold-deep))',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: 'var(--shadow-gold)', fontFamily: 'var(--ff-heading)', fontWeight: 700, fontSize: 20, color: '#241a04',
+            }}>
+              {(displayName || '?').trim().charAt(0)}
+            </div>
+            <div>
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-gold-soft)' }}>
+                Bienvenido de nuevo
+              </p>
+              <div className="dash-title" style={{ marginTop: 2 }}>{displayName}</div>
+            </div>
+          </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <UploadDocumentAction
               buttonClassName="btn btn-primary"
@@ -287,26 +291,30 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div className="dash-item" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          <Link className="btn btn-primary" to="/admin/tareas" title="Ver y gestionar tareas">
-            {`Tareas: (${tasksCount})`}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          <Link className="koop-stat-pill" to="/admin/tareas" title="Ver y gestionar tareas">
+            <span className="koop-stat-pill-icon" aria-hidden="true">✅</span>
+            <span>Tareas <strong>({tasksCount})</strong></span>
           </Link>
-          <Link className="btn btn-primary btn-sm" to="/admin/clientes-activos" title="Clientes">
-            Clientes
+          <Link className="koop-stat-pill" to="/admin/clientes-activos" title="Clientes">
+            <span className="koop-stat-pill-icon" aria-hidden="true">👥</span>
+            <span>Clientes</span>
           </Link>
-          <Link className="btn btn-orange btn-sm" to="/consultas" title="Acceder a consultas">
-            Consultas
+          <Link className="koop-stat-pill koop-stat-pill--gold" to="/consultas" title="Acceder a consultas">
+            <span className="koop-stat-pill-icon" aria-hidden="true">💬</span>
+            <span>Consultas</span>
           </Link>
         </div>
 
         <div className="admin-main-grid" style={{ marginTop: 16 }}>
           <div className="admin-main-left">
             <div className="dash-item">
-              <div className="font-semibold mb-2" style={{ fontWeight: 600, marginBottom: 8 }}>
-                Centro administrativo
+              <div className="koop-section-head">
+                <span className="koop-section-icon" aria-hidden="true">🏛️</span>
+                <span className="koop-section-title">Centro administrativo</span>
               </div>
-              <p style={{ marginBottom: 12 }}>
-                Supervisa la operacion del portal, gestiona usuarios y da seguimiento a la informacion mas reciente.
+              <p style={{ marginBottom: 14, color: 'var(--text-secondary)', fontSize: 13.5, lineHeight: 1.5 }}>
+                Supervisa la operación del portal, gestiona usuarios y da seguimiento a la información más reciente.
               </p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 <Link className="btn btn-primary btn-sm" to="/admin/usuarios" title="Administrar usuarios">
@@ -324,32 +332,28 @@ export default function AdminDashboard() {
               events={calendarEvents}
             />
 
-            <div style={{ display: 'grid', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
               {adminPrimaryActions.map((action) => (
-                <div key={action.key} className="dash-item" style={{ padding: 0, display: 'flex', alignItems: 'stretch' }}>
-                  {action.to ? (
-                    <Link
-                      className="btn btn-primary"
-                      to={action.to}
-                      style={primaryButtonStyle}
-                    >
-                      {action.label}
-                    </Link>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      style={primaryButtonStyle}
-                      onClick={() => {
-                        if (typeof window !== 'undefined' && action.href) {
-                          window.open(action.href, '_blank', 'noopener');
-                        }
-                      }}
-                    >
-                      {action.label}
-                    </button>
-                  )}
-                </div>
+                action.to ? (
+                  <Link key={action.key} className="koop-tile" to={action.to}>
+                    <span className="koop-tile-icon" aria-hidden="true">{action.icon}</span>
+                    {action.label}
+                  </Link>
+                ) : (
+                  <button
+                    key={action.key}
+                    type="button"
+                    className="koop-tile"
+                    onClick={() => {
+                      if (typeof window !== 'undefined' && action.href) {
+                        window.open(action.href, '_blank', 'noopener');
+                      }
+                    }}
+                  >
+                    <span className="koop-tile-icon" aria-hidden="true">{action.icon}</span>
+                    {action.label}
+                  </button>
+                )
               ))}
             </div>
           </div>
@@ -361,32 +365,25 @@ export default function AdminDashboard() {
             />
 
             <div className="dash-item compose-panel">
-              <div className="font-semibold" style={{ fontWeight: 600 }}>
-                {selectedDateLabel || 'Selecciona un dia'}
+              <div className="koop-section-head">
+                <span className="koop-section-icon" aria-hidden="true">📝</span>
+                <span className="koop-section-title">{selectedDateLabel || 'Selecciona un día'}</span>
               </div>
-              <p style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
-                Registra recordatorios o publicaciones para clientes especificos o para todos.
+              <p style={{ marginTop: -2, marginBottom: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
+                Registra recordatorios o publicaciones para clientes específicos o para todos.
               </p>
 
               <textarea
+                className="textarea"
                 value={noteText}
                 onChange={(event) => setNoteText(event.target.value)}
                 placeholder="Agregar nota o detalle del evento"
                 rows={4}
-                style={{
-                  width: '100%',
-                  marginTop: 12,
-                  background: '#1b263b',
-                  color: '#e2e8f0',
-                  border: '1px solid rgba(148,163,184,0.35)',
-                  borderRadius: 10,
-                  padding: '10px 12px',
-                  resize: 'vertical',
-                }}
+                style={{ width: '100%', marginTop: 12, boxSizing: 'border-box' }}
               />
 
               <div style={{ marginTop: 12 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label className="kf-checkbox-label">
                   <input
                     type="checkbox"
                     checked={publishToAll}
@@ -404,23 +401,15 @@ export default function AdminDashboard() {
               {!publishToAll && (
                 <div style={{ marginTop: 12 }}>
                   <input
+                    className="input"
                     type="search"
                     placeholder="Buscar por nombre, email o ID"
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      borderRadius: 10,
-                      border: '1px solid rgba(148,163,184,0.35)',
-                      background: '#1b263b',
-                      color: '#e2e8f0',
-                    }}
+                    style={{ width: '100%', boxSizing: 'border-box' }}
                   />
                   {clientsError && (
-                    <div style={{ color: '#fecaca', background: '#7f1d1d', padding: 8, borderRadius: 8, marginTop: 8 }}>
-                      {clientsError}
-                    </div>
+                    <div className="alert alert-error" style={{ marginTop: 8 }}>{clientsError}</div>
                   )}
                   <div className="admin-clients-list" style={{ marginTop: 8 }}>
                     {clientsLoading && <div style={{ opacity: 0.7 }}>Cargando clientes...</div>}
@@ -474,30 +463,30 @@ export default function AdminDashboard() {
                 </button>
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className="btn btn-gold"
                   onClick={handleSaveNote}
                   disabled={!noteText.trim() || (!publishToAll && selectedClientIds.length === 0)}
                 >
-                  Guardar anotacion
+                  Guardar anotación
                 </button>
               </div>
 
               {selectedDayEvents.length > 0 && (
                 <div style={{ marginTop: 16 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Anotaciones del dia</div>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Anotaciones del día</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {selectedDayEvents.map((event) => (
                       <div
                         key={event.id}
                         style={{
-                          border: '1px solid rgba(148,163,184,0.35)',
+                          border: '1px solid var(--border)',
                           borderRadius: 10,
                           padding: 10,
-                          background: '#1b263b',
+                          background: 'linear-gradient(180deg, #1b273c 0%, #161f31 100%)',
                         }}
                       >
                         <div style={{ marginBottom: 6 }}>{event.note}</div>
-                                                <div style={{ fontSize: 12, opacity: 0.7 }}>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>
                           {event.audience?.type === 'all'
                             ? 'Visible para todos los clientes'
                             : `Visible para: ${Array.isArray(event.audience?.clientIds) && event.audience.clientIds.length > 0 ? event.audience.clientIds.join(", ") : "—"}` }
@@ -510,23 +499,25 @@ export default function AdminDashboard() {
             </div>
 
             <div className="dash-item">
-              <div className="font-semibold mb-2" style={{ fontWeight: 600, marginBottom: 8 }}>
-                Recordatorios del equipo
+              <div className="koop-section-head">
+                <span className="koop-section-icon" aria-hidden="true">📢</span>
+                <span className="koop-section-title">Recordatorios del equipo</span>
               </div>
-              <p style={{ marginBottom: 0 }}>
-                Comparte novedades internas, carga reportes de gestion o establece tareas prioritarias para tu equipo desde esta seccion.
+              <p style={{ marginBottom: 0, fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                Comparte novedades internas, carga reportes de gestión o establece tareas prioritarias para tu equipo desde esta sección.
               </p>
             </div>
             <div className="dash-item">
-              <div className="font-semibold mb-2" style={{ fontWeight: 600, marginBottom: 8 }}>
-                Reproductor Spotify
+              <div className="koop-section-head">
+                <span className="koop-section-icon" aria-hidden="true">🎵</span>
+                <span className="koop-section-title">Reproductor Spotify</span>
               </div>
-              <p style={{ marginBottom: 0, fontSize: 13, opacity: 0.8 }}>
-                El reproductor de Spotify está disponible como ventana flotante en la esquina inferior izquierda. 
+              <p style={{ marginBottom: 0, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                Está disponible como ventana flotante en la esquina inferior izquierda.
                 La música continuará reproduciéndose mientras navegas entre páginas.
               </p>
             </div>
-            
+
           </div>
         </div>
 
@@ -567,29 +558,21 @@ export default function AdminDashboard() {
             </div>
 
             <div className="dash-item" style={{ padding: 0 }}>
-              <p style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
-                Registra recordatorios o publicaciones para clientes especificos o para todos.
+              <p style={{ marginTop: 4, fontSize: 13, color: 'var(--text-secondary)' }}>
+                Registra recordatorios o publicaciones para clientes específicos o para todos.
               </p>
 
               <textarea
+                className="textarea"
                 value={noteText}
                 onChange={(event) => setNoteText(event.target.value)}
                 placeholder="Agregar nota o detalle del evento"
                 rows={4}
-                style={{
-                  width: '100%',
-                  marginTop: 12,
-                  background: '#1b263b',
-                  color: '#e2e8f0',
-                  border: '1px solid rgba(148,163,184,0.35)',
-                  borderRadius: 10,
-                  padding: '10px 12px',
-                  resize: 'vertical',
-                }}
+                style={{ width: '100%', marginTop: 12, boxSizing: 'border-box' }}
               />
 
               <div style={{ marginTop: 12 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label className="kf-checkbox-label">
                   <input
                     type="checkbox"
                     checked={publishToAll}
@@ -607,23 +590,15 @@ export default function AdminDashboard() {
               {!publishToAll && (
                 <div style={{ marginTop: 12 }}>
                   <input
+                    className="input"
                     type="search"
                     placeholder="Buscar por nombre, email o ID"
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      borderRadius: 10,
-                      border: '1px solid rgba(148,163,184,0.35)',
-                      background: '#1b263b',
-                      color: '#e2e8f0',
-                    }}
+                    style={{ width: '100%', boxSizing: 'border-box' }}
                   />
                   {clientsError && (
-                    <div style={{ color: '#fecaca', background: '#7f1d1d', padding: 8, borderRadius: 8, marginTop: 8 }}>
-                      {clientsError}
-                    </div>
+                    <div className="alert alert-error" style={{ marginTop: 8 }}>{clientsError}</div>
                   )}
                   <div className="admin-clients-list" style={{ marginTop: 8 }}>
                     {clientsLoading && <div style={{ opacity: 0.7 }}>Cargando clientes...</div>}
@@ -677,26 +652,26 @@ export default function AdminDashboard() {
                 </button>
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className="btn btn-gold"
                   onClick={handleSaveNote}
                   disabled={!noteText.trim() || (!publishToAll && selectedClientIds.length === 0)}
                 >
-                  Guardar anotacion
+                  Guardar anotación
                 </button>
               </div>
 
               {selectedDayEvents.length > 0 && (
                 <div style={{ marginTop: 16 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Anotaciones del dia</div>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Anotaciones del día</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {selectedDayEvents.map((event) => (
                       <div
                         key={event.id}
                         style={{
-                          border: '1px solid rgba(148,163,184,0.35)',
+                          border: '1px solid var(--border)',
                           borderRadius: 10,
                           padding: 10,
-                          background: '#1b263b',
+                          background: 'linear-gradient(180deg, #1b273c 0%, #161f31 100%)',
                         }}
                       >
                         <div style={{ marginBottom: 6 }}>{event.note}</div>
