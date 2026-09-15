@@ -31,7 +31,7 @@ import AdminUsuarios from './pages/dinamic/AdminUsuariosResponsive/index.jsx';
 import AdminTareas from './pages/dinamic/AdminTareas/index.jsx';
 import ClientesActivos from './pages/dinamic/ClientesActivos/index.jsx';
 import Dashboard from './components/protected/Dashboard.jsx';
-import MiExpediente from './views/authenticated/MiExpediente';
+import MisExpedientes from './pages/dinamic/MisExpedientes/index.jsx';
 import MisCasos from './pages/dinamic/MisCasos/index.jsx';
 import Logout from './pages/dinamic/auth/Logout/index.jsx';
 import SpotifyCallback from './pages/dinamic/SpotifyCallback/index.jsx';
@@ -155,7 +155,7 @@ function App() {
             path="/mi-expediente"
             element={
               <ProtectedRoute>
-                <MiExpediente />
+                <MisExpedientes />
               </ProtectedRoute>
             }
           />
@@ -164,7 +164,7 @@ function App() {
             path="/dashboard2"
             element={
               <ProtectedRoute>
-                <MiExpediente />
+                <MisExpedientes />
               </ProtectedRoute>
             }
           />
