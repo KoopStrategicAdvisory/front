@@ -112,12 +112,9 @@ html.route-fade-in #root {
 /* Fallback de acento (por si el HTML legacy no define la variable) */
 :root { --koop-acento: #ee9626; }
 
-/* Global font variables */
-:root {
-  --ff-base: 'Montserrat', Arial, sans-serif;
-  --ff-heading: var(--ff-base);
-  --ff-accent: var(--ff-base);
-}
+/* --ff-base / --ff-heading / --ff-accent ya se definen en theme.css (que se
+   importa antes que este archivo) — Playfair Display para encabezados,
+   Montserrat para cuerpo. No se repiten aquí para no pisarlos. */
 
 /* Hide legacy in-page navbars when using global Navbar */
 .navbar.legacy { display: none !important; }

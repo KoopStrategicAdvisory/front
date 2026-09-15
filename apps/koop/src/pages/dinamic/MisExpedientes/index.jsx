@@ -75,7 +75,7 @@ export default function MisExpedientes() {
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M9 12h6M9 16h6M7 8h10M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" stroke="white" strokeWidth="2" strokeLinecap="round" /></svg>
             </div>
             <div>
-              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#e2e8f0' }}>{titulo}</h1>
+              <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, fontFamily: 'var(--ff-heading)', color: '#e2e8f0' }}>{titulo}</h1>
               <p style={{ margin: '4px 0 0', fontSize: 14, color: '#9fb3cc' }}>{subtitulo}</p>
             </div>
           </div>

@@ -5,6 +5,7 @@
 // - Rutas protegidas: requieren sesión (Dashboard, Mi expediente, etc.)
 // - Muestra/oculta la Navbar en login/registro
 import React, { useState } from 'react';
+import './styles/theme.css';
 import './styles/overrides.css';
 import './styles/menu-mobile-uniform.css';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';

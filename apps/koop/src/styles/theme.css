@@ -1,0 +1,125 @@
+/* ============================================================================
+   Koop — Sistema de diseño ("deluxe")
+   Fuente única de tokens (color, tipografía, sombra, radio, movimiento) para
+   todo el portal autenticado: dashboard, formularios, modales, wizard, navbar.
+   Paleta: azul-noche profundo + acentos turquesa/índigo (funcional) y un
+   dorado cálido (--accent-gold) reservado para detalles de "marca premium"
+   (bordes de foco importantes, badges, líneas divisorias, hover de alto
+   valor) — nunca para botones de uso masivo, para que siga leyéndose como
+   un acento especial y no se banalice.
+   ========================================================================= */
+
+:root {
+  /* ---- Superficies (de más profunda a más elevada) ---- */
+  --surface-0: #070d16;
+  --surface-1: #0d1b2a;
+  --surface-2: #16233a;
+  --surface-3: #1e2a3a;
+  --surface-4: #253750;
+  --surface-5: #2f4463;
+
+  --border-subtle: rgba(148, 163, 184, 0.14);
+  --border: rgba(148, 163, 184, 0.22);
+  --border-strong: rgba(148, 163, 184, 0.36);
+
+  /* ---- Texto ---- */
+  --text-primary: #f1f5fb;
+  --text-secondary: #9fb3cc;
+  --text-muted: #64748b;
+
+  /* ---- Acentos funcionales ---- */
+  --accent-teal: #4fd1c5;
+  --accent-teal-deep: #2fb3a6;
+  --accent-indigo: #6366f1;
+  --accent-violet: #8b5cf6;
+
+  /* ---- Acento de marca / lujo ---- */
+  --accent-gold: #f0b942;
+  --accent-gold-soft: #f6cd72;
+  --accent-gold-deep: #c9932a;
+  --accent-orange: #ee9626;
+
+  /* ---- Estado ---- */
+  --success: #34d399;
+  --success-bg: rgba(52, 211, 153, 0.12);
+  --danger: #f87171;
+  --danger-bg: rgba(239, 68, 68, 0.12);
+  --warning: #fbbf24;
+  --warning-bg: rgba(251, 191, 36, 0.12);
+
+  /* ---- Sombra (capas suaves, nunca un solo golpe duro) ---- */
+  --shadow-xs: 0 1px 2px rgba(2, 6, 16, 0.4);
+  --shadow-sm: 0 4px 14px rgba(2, 6, 16, 0.35);
+  --shadow-md: 0 12px 32px rgba(2, 6, 16, 0.45), 0 2px 8px rgba(2, 6, 16, 0.3);
+  --shadow-lg: 0 24px 64px rgba(2, 6, 16, 0.55), 0 4px 14px rgba(2, 6, 16, 0.35);
+  --shadow-gold: 0 0 0 1px rgba(240, 185, 66, 0.35), 0 10px 30px rgba(240, 185, 66, 0.14);
+  --shadow-teal: 0 10px 28px rgba(79, 209, 197, 0.22);
+  --shadow-inset-top: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  /* ---- Radios ---- */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 26px;
+  --r-pill: 999px;
+
+  /* ---- Tipografía ---- */
+  --ff-base: 'Montserrat', Arial, sans-serif;
+  --ff-heading: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --ff-accent: var(--ff-base);
+
+  /* ---- Movimiento ---- */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-snap: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 0.16s;
+  --dur-base: 0.24s;
+  --dur-slow: 0.42s;
+}
+
+/* Fondos "deluxe" reutilizables: noche profunda con un halo cálido muy sutil
+   (radial de dorado al 3-4%) para que no se vea plano incluso en zonas
+   grandes sin contenido — sensación de estudio de abogados iluminado, no de
+   pantalla de admin genérica. */
+.koop-surface {
+  background:
+    radial-gradient(1200px 480px at 12% -10%, rgba(240, 185, 66, 0.05), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(79, 209, 197, 0.07), transparent 55%),
+    linear-gradient(160deg, var(--surface-1) 0%, #0a1522 55%, var(--surface-0) 100%);
+}
+
+/* Línea divisoria dorada — usar con moderación (headers de sección premium,
+   separadores de tarjeta destacada). */
+.koop-gold-rule {
+  height: 2px;
+  width: 46px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--accent-gold), var(--accent-gold-soft));
+  box-shadow: 0 0 12px rgba(240, 185, 66, 0.5);
+}
+
+/* Utilidad de texto con gradiente dorado, para títulos que deben sentirse
+   "de marca" (encabezados de página, no cuerpo de texto). */
+.koop-heading-gold {
+  font-family: var(--ff-heading);
+  background: linear-gradient(120deg, var(--accent-gold-soft), var(--accent-gold) 55%, var(--accent-gold-deep));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+::selection {
+  background: rgba(240, 185, 66, 0.28);
+  color: #fff;
+}
+
+/* Scrollbar discreto y consistente con la paleta (Chromium/Edge) */
+* { scrollbar-color: rgba(148, 163, 184, 0.35) transparent; scrollbar-width: thin; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.28);
+  border-radius: var(--r-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.45); background-clip: padding-box; }

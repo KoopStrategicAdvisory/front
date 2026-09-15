@@ -58,8 +58,8 @@
 .kf-input:focus,
 .kf-select:focus,
 .kf-textarea:focus {
-  border-color: #7c7ff5;
-  box-shadow: 0 0 0 3px rgba(124, 127, 245, 0.22);
+  border-color: var(--accent-gold, #f0b942);
+  box-shadow: 0 0 0 3px rgba(240, 185, 66, 0.2);
   background: linear-gradient(180deg, #212e48 0%, #1a2439 100%);
 }
 
@@ -109,7 +109,7 @@
 .kf-checkbox-label input[type='checkbox'] {
   width: 17px;
   height: 17px;
-  accent-color: #7c7ff5;
+  accent-color: var(--accent-gold, #f0b942);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -132,8 +132,8 @@
 }
 
 .kf-file-drop:hover {
-  border-color: rgba(124, 127, 245, 0.55);
-  background: rgba(124, 127, 245, 0.08);
+  border-color: rgba(240, 185, 66, 0.5);
+  background: rgba(240, 185, 66, 0.06);
 }
 
 .kf-file-drop input[type='file'] {

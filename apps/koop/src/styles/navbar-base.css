@@ -4,9 +4,12 @@
 .navbar {
   width: 100%;
   display: flex; align-items: center; justify-content: center;
-  padding: 0 40px; background: #fff;
+  padding: 0 40px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfbfc 100%);
   position: fixed; top: 0; left: 0;
-  z-index: 100; box-shadow: 0 2px 8px #0001; height: var(--nav-h);
+  z-index: 100;
+  box-shadow: 0 1px 0 rgba(238, 150, 38, 0.18), 0 6px 24px rgba(15, 23, 42, 0.08);
+  height: var(--nav-h);
 }
 .navbar-content {
   width: 100%; max-width: 1200px;
@@ -41,8 +44,17 @@
 .navbar .nav-menu .drop-btn {
   font-family: var(--ff-base);
 }
-.navbar .nav-menu a { color: #23395d; text-decoration: none; font-weight: 500; font-size: 1em; letter-spacing: .02em; transition: color .2s; }
+.navbar .nav-menu a {
+  color: #23395d; text-decoration: none; font-weight: 500; font-size: 1em; letter-spacing: .02em;
+  position: relative; transition: color .2s;
+}
 .navbar .nav-menu a:hover { color: var(--koop-acento, #ee9626); }
+.navbar .nav-menu .main-links > a::after {
+  content: ''; position: absolute; left: 0; right: 100%; bottom: -6px; height: 2px;
+  background: var(--koop-acento, #ee9626); border-radius: 2px;
+  transition: right .22s cubic-bezier(.22,1,.36,1);
+}
+.navbar .nav-menu .main-links > a:hover::after { right: 0; }
 
 .navbar .dropdown { position: relative; }
 .navbar .drop-btn { display: flex; align-items: center; }
@@ -54,8 +66,10 @@
 
 .navbar .dropdown-content {
   display: none; position: absolute; top: calc(100% + 10px); left: 0;
-  background: #fff; padding: 16px 24px; box-shadow: 0 4px 18px #0002;
-  border-radius: 8px; z-index: 100; gap: 32px;
+  background: #ffffff; padding: 18px 26px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.14), 0 2px 8px rgba(15, 23, 42, 0.06);
+  border-radius: 14px; border-top: 2px solid rgba(238, 150, 38, 0.55);
+  z-index: 100; gap: 32px;
 }
 @media (hover: hover) {
   .navbar .dropdown:hover .dropdown-content { display: flex; }

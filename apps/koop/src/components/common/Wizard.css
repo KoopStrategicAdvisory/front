@@ -50,10 +50,10 @@
 }
 
 .kf-wizard-step--active .kf-wizard-circle {
-  border-color: #7c7ff5;
-  background: linear-gradient(135deg, #7c7ff5, #8b5cf6);
-  color: #fff;
-  box-shadow: 0 0 0 4px rgba(124, 127, 245, 0.16);
+  border-color: var(--accent-gold, #f0b942);
+  background: linear-gradient(135deg, var(--accent-gold-soft, #f6cd72), var(--accent-gold, #f0b942));
+  color: #241a04;
+  box-shadow: 0 0 0 4px rgba(240, 185, 66, 0.18);
   transform: scale(1.06);
 }
 
@@ -124,8 +124,8 @@
 .kf-wizard-summary {
   display: grid;
   gap: 10px;
-  background: rgba(124, 127, 245, 0.06);
-  border: 1px solid rgba(124, 127, 245, 0.16);
+  background: rgba(240, 185, 66, 0.05);
+  border: 1px solid rgba(240, 185, 66, 0.18);
   border-radius: 12px;
   padding: 16px 18px;
 }

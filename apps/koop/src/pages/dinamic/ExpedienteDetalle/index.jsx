@@ -730,7 +730,7 @@ export default function ExpedienteDetalle() {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
-                  <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#e2e8f0' }}>{selectedExpediente.numero_de_expediente}</h1>
+                  <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, fontFamily: 'var(--ff-heading)', color: '#e2e8f0' }}>{selectedExpediente.numero_de_expediente}</h1>
                   {selectedExpediente.nombre_tipo_proceso && (
                     <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 10, background: 'rgba(79,209,197,0.1)', color: '#67e8f9', border: '1px solid rgba(79,209,197,0.2)' }}>{selectedExpediente.nombre_tipo_proceso}</span>
                   )}
