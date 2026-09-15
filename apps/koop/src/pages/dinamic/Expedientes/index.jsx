@@ -15,6 +15,7 @@ const PAGE_SIZE = 20;
 
 const EMPTY_FORM = {
   numero_de_expediente: '',
+  numero_radicado_despacho: '',
   id_cliente: '',
   juzgado_o_autoridad_que_conoce: '',
   id_tipo_proc_subtipo_proc_tipo_pre: '',
@@ -81,7 +82,8 @@ function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProces
       <WizardPanel stepKey={step} direction={direction}>
         {step === 0 && (
           <EditForm>
-            <EditField label="N° Expediente *" value={form.numero_de_expediente} onChange={set('numero_de_expediente')} placeholder="KOOP-2024-001" />
+            <EditField label="N° Expediente KOOP *" value={form.numero_de_expediente} onChange={set('numero_de_expediente')} placeholder="KOOP-2024-001" />
+            <EditField label="N° Radicado del despacho (opcional)" value={form.numero_radicado_despacho} onChange={set('numero_radicado_despacho')} placeholder="Ej: 11001310300320240012300" />
             <EditSelect
               label="Cliente *"
               value={form.id_cliente}
@@ -132,7 +134,8 @@ function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProces
           <EditForm>
             <EditField label="Juzgado / Autoridad que conoce" value={form.juzgado_o_autoridad_que_conoce} onChange={set('juzgado_o_autoridad_que_conoce')} placeholder="Juzgado 5 Laboral del Circuito de Bogotá" />
             <dl className="kf-wizard-summary">
-              <div className="kf-wizard-summary-row"><dt>N° Expediente</dt><dd>{form.numero_de_expediente || '—'}</dd></div>
+              <div className="kf-wizard-summary-row"><dt>N° Expediente KOOP</dt><dd>{form.numero_de_expediente || '—'}</dd></div>
+              <div className="kf-wizard-summary-row"><dt>N° Radicado del despacho</dt><dd>{form.numero_radicado_despacho || '—'}</dd></div>
               <div className="kf-wizard-summary-row"><dt>Cliente</dt><dd>{nombreCliente || '—'}</dd></div>
               <div className="kf-wizard-summary-row"><dt>Materia</dt><dd>{nombreTipoProceso || '—'}</dd></div>
             </dl>
@@ -168,6 +171,7 @@ function expedienteToForm(exp, combos) {
   }
   return {
     numero_de_expediente: exp.numero_de_expediente || '',
+    numero_radicado_despacho: exp.numero_radicado_despacho || '',
     id_cliente: exp.id_cliente != null ? String(exp.id_cliente) : '',
     juzgado_o_autoridad_que_conoce: exp.juzgado_o_autoridad_que_conoce || '',
     id_tipo_proc_subtipo_proc_tipo_pre: exp.id_tipo_proc_subtipo_proc_tipo_pre != null ? String(exp.id_tipo_proc_subtipo_proc_tipo_pre) : '',
@@ -179,6 +183,7 @@ function expedienteToForm(exp, combos) {
 function formToPayload(form) {
   const payload = {
     numero_de_expediente: form.numero_de_expediente,
+    numero_radicado_despacho: form.numero_radicado_despacho?.trim() || undefined,
     juzgado_o_autoridad_que_conoce: form.juzgado_o_autoridad_que_conoce || undefined,
   };
   if (form.id_cliente) payload.id_cliente = Number(form.id_cliente);
@@ -398,6 +403,11 @@ export default function Expedientes() {
                       </div>
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+                        {exp.numero_radicado_despacho && (
+                          <div style={{ fontSize: 13, color: '#9fb3cc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={exp.numero_radicado_despacho}>
+                            <span style={{ color: '#64748b' }}>Radicado despacho:</span> <span style={{ color: '#cbd5e1' }}>{exp.numero_radicado_despacho}</span>
+                          </div>
+                        )}
                         {exp.juzgado_o_autoridad_que_conoce && (
                           <div style={{ fontSize: 13, color: '#9fb3cc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={exp.juzgado_o_autoridad_que_conoce}>
                             <span style={{ color: '#64748b' }}>Juzgado:</span> <span style={{ color: '#cbd5e1' }}>{exp.juzgado_o_autoridad_que_conoce}</span>
