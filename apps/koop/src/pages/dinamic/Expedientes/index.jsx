@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useExpedientes } from '../../../hooks/useExpedientes';
+import { listExpedientes } from '../../../api/expedientes';
 import { useAccess } from '../../../context/AccessContext';
 import { useAuth } from '../../../context/AuthContext';
 import { listTiposProceso, listTipoProcCombo, listSubtiposProceso, listTiposPretension, listContraparte, createContraparte } from '../../../api/catalogos';
@@ -16,7 +17,9 @@ const PAGE_SIZE = 20;
 const NUEVA_CONTRAPARTE = '__nueva__';
 
 const EMPTY_FORM = {
-  numero_de_expediente: '',
+  _anio: '',
+  _secuencia: '',
+  _secuenciaAuto: true,
   numero_radicado_despacho: '',
   id_cliente: '',
   id_contraparte: '',
@@ -30,6 +33,17 @@ const EMPTY_FORM = {
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ANIO_RE = /^\d{4}$/;
+const SECUENCIA_RE = /^\d+$/;
+
+// El numero_de_expediente real (KOOP-AÑO-SECUENCIA) se arma solo a partir de
+// año + secuencia — el usuario ya no escribe el prefijo ni los guiones a mano,
+// asi todos quedan con el mismo formato sin depender de que cada quien lo
+// tipee igual.
+function buildNumeroExpediente({ _anio, _secuencia }) {
+  if (!ANIO_RE.test(_anio) || !SECUENCIA_RE.test(String(_secuencia).trim())) return '';
+  return `KOOP-${_anio}-${String(_secuencia).trim()}`;
+}
 
 const WIZARD_STEPS = ['Datos básicos', 'Materia del caso', 'Confirmar'];
 
@@ -38,12 +52,26 @@ const WIZARD_STEPS = ['Datos básicos', 'Materia del caso', 'Confirmar'];
 // (datos básicos -> materia del caso en cascada -> confirmación), con
 // transiciones animadas entre pasos y revelado progresivo de los campos
 // dependientes (subtipo tras elegir tipo, pretensión tras elegir subtipo).
-function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProceso, tiposPretension, clientes, contrapartes, onSubmit, onCancel, submitLabel, submitting, startMaxReached = 0 }) {
+function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProceso, tiposPretension, clientes, contrapartes, onAnioChange, onSubmit, onCancel, submitLabel, submitting, startMaxReached = 0 }) {
   const [step, setStep] = useState(0);
   const [maxReached, setMaxReached] = useState(startMaxReached);
   const [direction, setDirection] = useState(1);
 
   const set = (field) => (e) => onChange({ ...form, [field]: e.target.value });
+
+  // Mientras la secuencia siga en modo "sugerida" (el usuario no la ha tocado
+  // a mano todavia), cambiar el año vuelve a pedir la siguiente secuencia
+  // disponible para ese año. En cuanto el usuario escribe la secuencia el
+  // mismo, se deja de tocar (_secuenciaAuto en false).
+  const handleAnioChange = (e) => {
+    const anio = e.target.value.replace(/\D/g, '').slice(0, 4);
+    onChange({ ...form, _anio: anio });
+    if (ANIO_RE.test(anio)) onAnioChange?.(anio);
+  };
+  const handleSecuenciaChange = (e) => {
+    const secuencia = e.target.value.replace(/\D/g, '');
+    onChange({ ...form, _secuencia: secuencia, _secuenciaAuto: false });
+  };
 
   const nombreSubtipo = (id) => subtiposProceso.find((s) => String(s.id) === String(id))?.nombre || `Subtipo #${id}`;
   const nombrePretension = (id) => tiposPretension.find((p) => String(p.id) === String(id))?.nombre || `Pretensión #${id}`;
@@ -86,7 +114,7 @@ function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProces
   const correoJuzgadoValid = EMAIL_RE.test(form.correo_juzgado.trim());
 
   const stepValid = [
-    !!form.numero_de_expediente.trim() && !!form.id_cliente,
+    !!buildNumeroExpediente(form) && !!form.id_cliente,
     !!form.id_tipo_proc_subtipo_proc_tipo_pre,
     contraparteValid && correoJuzgadoValid,
   ];
@@ -102,7 +130,21 @@ function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProces
       <WizardPanel stepKey={step} direction={direction}>
         {step === 0 && (
           <EditForm>
-            <EditField label="N° Expediente KOOP *" value={form.numero_de_expediente} onChange={set('numero_de_expediente')} placeholder="KOOP-2024-001" />
+            <label className="kf-field">
+              <span className="kf-label">N° Expediente KOOP *</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ padding: '10px 12px', background: '#1e2a3a', border: '1px solid #394b61', borderRadius: 8, color: '#9fb3cc', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' }}>KOOP-</span>
+                <input
+                  className="kf-input" type="text" inputMode="numeric" style={{ width: 80 }}
+                  value={form._anio} onChange={handleAnioChange} placeholder="2024" maxLength={4}
+                />
+                <span style={{ color: '#9fb3cc', fontWeight: 700 }}>-</span>
+                <input
+                  className="kf-input" type="text" inputMode="numeric" style={{ width: 80 }}
+                  value={form._secuencia} onChange={handleSecuenciaChange} placeholder="10"
+                />
+              </div>
+            </label>
             <EditField label="N° Radicado del despacho (opcional)" value={form.numero_radicado_despacho} onChange={set('numero_radicado_despacho')} placeholder="Ej: 11001310300320240012300" />
             <EditSelect
               label="Cliente *"
@@ -169,7 +211,7 @@ function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProces
               <EditField label="Dirección del juzgado (opcional)" value={form.direccion_juzgado} onChange={set('direccion_juzgado')} placeholder="Calle 12 # 7-45, Bogotá" />
             </EditRow>
             <dl className="kf-wizard-summary">
-              <div className="kf-wizard-summary-row"><dt>N° Expediente KOOP</dt><dd>{form.numero_de_expediente || '—'}</dd></div>
+              <div className="kf-wizard-summary-row"><dt>N° Expediente KOOP</dt><dd>{buildNumeroExpediente(form) || '—'}</dd></div>
               <div className="kf-wizard-summary-row"><dt>N° Radicado del despacho</dt><dd>{form.numero_radicado_despacho || '—'}</dd></div>
               <div className="kf-wizard-summary-row"><dt>Cliente</dt><dd>{nombreCliente || '—'}</dd></div>
               <div className="kf-wizard-summary-row"><dt>Materia</dt><dd>{nombreTipoProceso || '—'}</dd></div>
@@ -205,8 +247,15 @@ function expedienteToForm(exp, combos) {
       _subtipoProceso = String(found.id_subtipo_proceso);
     }
   }
+  // Los datos reales ya existentes fueron creados con este mismo formato
+  // (KOOP-AÑO-SECUENCIA), asi que se puede separar de vuelta en los dos
+  // campos editables. Si algun registro viejo no calza con el patron, se deja
+  // la secuencia en blanco para que quien edite la vuelva a escribir.
+  const numeroMatch = /^KOOP-(\d{4})-(\d+)$/.exec(exp.numero_de_expediente || '');
   return {
-    numero_de_expediente: exp.numero_de_expediente || '',
+    _anio: numeroMatch?.[1] || '',
+    _secuencia: numeroMatch?.[2] || '',
+    _secuenciaAuto: false,
     numero_radicado_despacho: exp.numero_radicado_despacho || '',
     id_cliente: exp.id_cliente != null ? String(exp.id_cliente) : '',
     id_contraparte: exp.id_contraparte != null ? String(exp.id_contraparte) : '',
@@ -235,7 +284,7 @@ async function resolveContraparteId(form) {
 
 async function formToPayload(form) {
   const payload = {
-    numero_de_expediente: form.numero_de_expediente,
+    numero_de_expediente: buildNumeroExpediente(form),
     numero_radicado_despacho: form.numero_radicado_despacho?.trim() || undefined,
     juzgado_o_autoridad_que_conoce: form.juzgado_o_autoridad_que_conoce || undefined,
     correo_juzgado: form.correo_juzgado?.trim() || undefined,
@@ -339,12 +388,39 @@ export default function Expedientes() {
     setTimeout(() => setNotice(null), 4000);
   };
 
-  const openCreate = () => { setForm({ ...EMPTY_FORM }); setShowCreate(true); };
+  // Sugiere la siguiente secuencia libre para un año (activos + inactivos,
+  // porque numero_de_expediente es UNIQUE en la base — reusar un numero de un
+  // expediente eliminado logicamente rompería esa restricción). Solo pisa la
+  // secuencia mientras siga en modo "sugerida" (_secuenciaAuto): si el usuario
+  // ya la escribió a mano, un cambio de año no se la vuelve a pisar.
+  const suggestNextSecuencia = useCallback(async (anio) => {
+    try {
+      const prefix = `KOOP-${anio}-`;
+      const [activos, inactivos] = await Promise.all([
+        listExpedientes({ search: prefix, active: true, limit: 200 }),
+        listExpedientes({ search: prefix, active: false, limit: 200 }),
+      ]);
+      const patron = new RegExp(`^KOOP-${anio}-(\\d+)$`);
+      let max = 0;
+      for (const e of [...(activos.items || []), ...(inactivos.items || [])]) {
+        const m = patron.exec(e.numero_de_expediente || '');
+        if (m) max = Math.max(max, Number(m[1]));
+      }
+      setForm((prev) => (prev._secuenciaAuto && prev._anio === anio) ? { ...prev, _secuencia: String(max + 1) } : prev);
+    } catch { /* si falla, el usuario simplemente escribe la secuencia a mano */ }
+  }, []);
+
+  const openCreate = () => {
+    const anio = String(new Date().getFullYear());
+    setForm({ ...EMPTY_FORM, _anio: anio });
+    setShowCreate(true);
+    suggestNextSecuencia(anio);
+  };
   const openEdit = (exp) => { setEditTarget(exp); setForm(expedienteToForm(exp, combos)); setShowEdit(true); };
   const openDelete = (exp) => { setEditTarget(exp); setShowDelete(true); };
 
   const validateForm = () => {
-    if (!form.numero_de_expediente.trim() || !form.id_cliente) { showMsg('N° expediente y cliente son obligatorios', 'danger'); return false; }
+    if (!buildNumeroExpediente(form) || !form.id_cliente) { showMsg('Año, secuencia y cliente son obligatorios', 'danger'); return false; }
     const contraparteOk = form.id_contraparte === NUEVA_CONTRAPARTE ? !!form._contraparteNueva.trim() : !!form.id_contraparte;
     if (!contraparteOk) { showMsg('La contraparte (parte demandada) es obligatoria', 'danger'); return false; }
     if (!EMAIL_RE.test(form.correo_juzgado.trim())) { showMsg('El correo del juzgado/entidad es obligatorio y debe ser válido', 'danger'); return false; }
@@ -534,6 +610,7 @@ export default function Expedientes() {
         <ExpedienteWizard
           form={form} onChange={setForm}
           tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes} contrapartes={contrapartes}
+          onAnioChange={suggestNextSecuencia}
           onSubmit={handleCreate} onCancel={() => setShowCreate(false)} submitLabel="Crear expediente" submitting={loading}
         />
       </Modal>
@@ -542,6 +619,7 @@ export default function Expedientes() {
         <ExpedienteWizard
           form={form} onChange={setForm}
           tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes} contrapartes={contrapartes}
+          onAnioChange={suggestNextSecuencia}
           onSubmit={handleEdit} onCancel={() => setShowEdit(false)} submitLabel="Guardar cambios" submitting={loading}
           startMaxReached={WIZARD_STEPS.length - 1}
         />
