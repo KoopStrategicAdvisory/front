@@ -15,7 +15,7 @@ export interface ListDocumentosParams {
 export interface DocumentosExpedienteApiClient {
   list(params?: ListDocumentosParams): Promise<ListResponse<Documento>>;
   get(id: Id): Promise<Documento>;
-  create(data: CreateDocumentoInput): Promise<Documento>;
+  create(data: CreateDocumentoInput, onUploadProgress?: (percent: number | null) => void): Promise<Documento>;
   update(id: Id, data: UpdateDocumentoInput): Promise<Documento>;
   delete(id: Id): Promise<void>;
 }
@@ -38,8 +38,8 @@ export function useDocumentosExpediente(client: DocumentosExpedienteApiClient) {
     }
   }, [client]);
 
-  const createDocumento = useCallback(async (data: CreateDocumentoInput) => {
-    const created = await client.create(data);
+  const createDocumento = useCallback(async (data: CreateDocumentoInput, onUploadProgress?: (percent: number | null) => void) => {
+    const created = await client.create(data, onUploadProgress);
     setDocumentos((prev) => [...prev, created]);
     return created;
   }, [client]);

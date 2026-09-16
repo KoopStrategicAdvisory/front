@@ -14,7 +14,7 @@ export function Modal({ show, onClose, title, size, children }) {
   if (!show) return null;
   return (
     <div className="kf-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
-      <div className={`kf-modal-card${size === 'sm' ? ' kf-modal-card--sm' : ''}`}>
+      <div className={`kf-modal-card${size === 'sm' ? ' kf-modal-card--sm' : ''}${size === 'lg' ? ' kf-modal-card--lg' : ''}`}>
         {title != null && (
           <div className="kf-modal-header">
             <h3 className="kf-modal-title">{title}</h3>

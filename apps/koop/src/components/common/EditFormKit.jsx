@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './EditFormKit.css';
 
 export function EditForm({ children, style }) {
@@ -81,12 +81,29 @@ export function EditCheckbox({ label, checked, onChange }) {
   );
 }
 
-// Zona de carga de archivo con estilo de "dropzone" en vez del input nativo feo.
+// Zona de carga de archivo con estilo de "dropzone" — arrastrar y soltar de
+// verdad (antes solo se veia como dropzone pero solo funcionaba el click).
 export function EditFileField({ label, file, onChange, accept, helperText = 'Haz clic o arrastra un archivo aquí' }) {
+  const [dragging, setDragging] = useState(false);
+
+  const setFile = (f) => {
+    if (!f) return;
+    onChange({ target: { files: [f] } });
+  };
+
   return (
     <label className="kf-field">
       {label != null && <span className="kf-label">{label}</span>}
-      <div className="kf-file-drop">
+      <div
+        className={`kf-file-drop${dragging ? ' kf-file-drop--active' : ''}`}
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          setFile(e.dataTransfer.files?.[0]);
+        }}
+      >
         <span className="kf-file-drop-icon">📎</span>
         <span className="kf-file-drop-text">
           <strong>Selecciona un archivo</strong> — {helperText}

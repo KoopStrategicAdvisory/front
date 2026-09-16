@@ -13,6 +13,7 @@ import { EditForm, EditRow, EditField, EditTextArea, EditSelect, EditCheckbox, E
 import { Modal, ModalFooter, DeleteModal } from '../../../components/common/Modal';
 import { ORGANISMO_OPTIONS } from '../../../constants/consultaPortals';
 import { estadoProcesoColor } from '../../../constants/estadoProceso';
+import { fileKind, canPreview, FILE_KIND_META } from '../../../constants/fileKind';
 import '../../../styles/dashboard.css';
 import '../../../styles/mi-expediente.css';
 
@@ -578,7 +579,13 @@ function Badge({ color, children }) {
 }
 
 // ─── Documentos Tab ───────────────────────────────────────────────────────────
-const EMPTY_DOCUMENTO = { file: null, titulo: '', id_tipo_documento: '', descripcion: '', visibilidad_cliente: false };
+// Reescrito: la version anterior solo permitia subir y descargar — sin
+// previsualizacion, sin edicion (aunque el backend ya soportaba PUT completo),
+// sin busqueda/filtro, y todos los archivos se veian identicos (mismo icono
+// generico) en una lista angosta de una sola columna.
+const EMPTY_DOCUMENTO = { file: null, titulo: '', id_tipo_documento: '', descripcion: '', fecha_documento: '', visibilidad_cliente: false };
+const EMPTY_EDIT_DOCUMENTO = { titulo: '', id_tipo_documento: '', descripcion: '', fecha_documento: '', visibilidad_cliente: false };
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 function formatBytes(bytes) {
   if (bytes == null) return '';
@@ -587,16 +594,28 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function DocumentoForm({ f, onF, tipoDocumentoOpts }) {
+function iconBtnStyle(color) {
+  return { flex: 1, padding: '6px 0', background: `${color}1a`, border: `1px solid ${color}44`, borderRadius: 6, color, fontSize: 13, cursor: 'pointer' };
+}
+
+// showFile=false para el formulario de edicion: el archivo en si no se
+// reemplaza (subir uno nuevo es, en la practica, otro documento con su
+// propia version/fecha), solo su metadata.
+function DocumentoForm({ f, onF, tipoDocumentoOpts, showFile = true }) {
   return (
     <EditForm style={{ marginTop: 8 }}>
-      <EditFileField
-        label="Archivo *"
-        file={f.file}
-        onChange={(e) => onF({ ...f, file: e.target.files?.[0] || null, titulo: f.titulo || e.target.files?.[0]?.name || '' })}
-      />
+      {showFile && (
+        <EditFileField
+          label="Archivo *"
+          file={f.file}
+          onChange={(e) => onF({ ...f, file: e.target.files?.[0] || null, titulo: f.titulo || e.target.files?.[0]?.name || '' })}
+        />
+      )}
       <EditField label="Título" value={f.titulo} onChange={(e) => onF({ ...f, titulo: e.target.value })} placeholder="Auto admisorio - notificación" />
-      <EditSelect label="Tipo de documento *" value={f.id_tipo_documento} onChange={(e) => onF({ ...f, id_tipo_documento: e.target.value })} options={tipoDocumentoOpts} />
+      <EditRow cols={2}>
+        <EditSelect label="Tipo de documento *" value={f.id_tipo_documento} onChange={(e) => onF({ ...f, id_tipo_documento: e.target.value })} options={tipoDocumentoOpts} />
+        <EditField label="Fecha del documento" type="date" value={f.fecha_documento} onChange={(e) => onF({ ...f, fecha_documento: e.target.value })} />
+      </EditRow>
       <EditTextArea label="Descripción" value={f.descripcion} onChange={(e) => onF({ ...f, descripcion: e.target.value })} rows={2} placeholder="Notas sobre el documento..." />
       <EditCheckbox label="Visible para el cliente" checked={f.visibilidad_cliente} onChange={(e) => onF({ ...f, visibilidad_cliente: e.target.checked })} />
     </EditForm>
@@ -604,27 +623,65 @@ function DocumentoForm({ f, onF, tipoDocumentoOpts }) {
 }
 
 function DocumentosTab({ expedienteId, canEdit }) {
-  const { documentos, loading, error, fetchDocumentos, createDocumento, deleteDocumento } = useDocumentosExpediente();
+  const { documentos, loading, error, fetchDocumentos, createDocumento, updateDocumento, deleteDocumento } = useDocumentosExpediente();
   const [tiposDocumento, setTiposDocumento] = useState([]);
+  const [search, setSearch] = useState('');
+  const [tipoFilter, setTipoFilter] = useState('');
   const [showUpload, setShowUpload] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [target, setTarget] = useState(null);
   const [form, setForm] = useState(EMPTY_DOCUMENTO);
+  const [editForm, setEditForm] = useState(EMPTY_EDIT_DOCUMENTO);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const [notice, setNotice] = useState(null);
+  const [thumbUrls, setThumbUrls] = useState({});
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const load = () => fetchDocumentos({ id_expediente: expedienteId });
 
   useEffect(() => {
-    fetchDocumentos({ id_expediente: expedienteId });
+    load();
     listTiposDocumento().then(setTiposDocumento).catch(() => {});
   }, [expedienteId]);
+
+  // Miniaturas reales para imagenes (el resto de tipos usa un icono fijo por
+  // categoria) — se piden bajo demanda, una por una, solo para las que aun
+  // no tienen URL firmada en cache.
+  useEffect(() => {
+    const pendientes = documentos.filter((d) => fileKind(d.mime_type, d.nombre_archivo) === 'image' && !thumbUrls[d.id]);
+    if (pendientes.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const d of pendientes) {
+        try {
+          const { url } = await getDownloadUrl(d.id, 900);
+          if (!cancelled) setThumbUrls((prev) => ({ ...prev, [d.id]: url }));
+        } catch { /* sin miniatura, se queda con el icono */ }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [documentos]);
 
   const msg = (text, type = 'success') => { setNotice({ text, type }); setTimeout(() => setNotice(null), 4000); };
   const tipoDocumentoOpts = [{ value: '', label: 'Seleccione tipo...' }, ...tiposDocumento.map((t) => ({ value: String(t.id), label: t.nombre }))];
 
+  const filtered = documentos.filter((d) => {
+    if (tipoFilter && String(d.id_tipo_documento) !== tipoFilter) return false;
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    return [d.titulo, d.nombre_archivo, d.descripcion].some((v) => v?.toLowerCase().includes(q));
+  });
+
   const handleUpload = async () => {
     if (!form.file) { msg('Selecciona un archivo', 'danger'); return; }
     if (!form.id_tipo_documento) { msg('El tipo de documento es obligatorio', 'danger'); return; }
+    if (form.file.size > MAX_FILE_BYTES) { msg('El archivo supera el límite de 25 MB', 'danger'); return; }
     setUploading(true);
+    setUploadProgress(0);
     try {
       await createDocumento({
         file: form.file,
@@ -632,14 +689,66 @@ function DocumentosTab({ expedienteId, canEdit }) {
         id_tipo_documento: Number(form.id_tipo_documento),
         titulo: form.titulo || undefined,
         descripcion: form.descripcion || undefined,
+        fecha_documento: form.fecha_documento || undefined,
         visibilidad_cliente: form.visibilidad_cliente,
-      });
+      }, setUploadProgress);
       setShowUpload(false); setForm(EMPTY_DOCUMENTO);
       msg('Documento subido exitosamente');
     } catch (e) {
       msg(e?.response?.data?.message || e?.message || 'Error al subir documento', 'danger');
     } finally {
       setUploading(false);
+      setUploadProgress(null);
+    }
+  };
+
+  const openEdit = (d) => {
+    setTarget(d);
+    setEditForm({
+      titulo: d.titulo || '',
+      id_tipo_documento: d.id_tipo_documento != null ? String(d.id_tipo_documento) : '',
+      descripcion: d.descripcion || '',
+      fecha_documento: d.fecha_documento?.slice(0, 10) || '',
+      visibilidad_cliente: !!d.visibilidad_cliente,
+    });
+    setShowEdit(true);
+  };
+
+  // El UPDATE del backend devuelve la fila cruda (sin el JOIN de nombre_tipo_documento
+  // / nombre_usuario_carga que trae el listado) — se recarga la lista para no dejar
+  // esos nombres en blanco hasta el proximo refresh manual (mismo patron que Etapas).
+  const handleEditSave = async () => {
+    try {
+      await updateDocumento(target.id, {
+        id_tipo_documento: editForm.id_tipo_documento ? Number(editForm.id_tipo_documento) : undefined,
+        titulo: editForm.titulo || undefined,
+        descripcion: editForm.descripcion || undefined,
+        fecha_documento: editForm.fecha_documento || undefined,
+        visibilidad_cliente: editForm.visibilidad_cliente,
+      });
+      await load();
+      setShowEdit(false);
+      msg('Documento actualizado');
+    } catch (e) {
+      msg(e?.response?.data?.message || e?.message || 'Error al actualizar', 'danger');
+    }
+  };
+
+  const openPreview = async (d) => {
+    setTarget(d);
+    setShowPreview(true);
+    const kind = fileKind(d.mime_type, d.nombre_archivo);
+    if (!canPreview(kind)) { setPreviewUrl(null); return; }
+    if (thumbUrls[d.id]) { setPreviewUrl(thumbUrls[d.id]); return; }
+    setPreviewLoading(true);
+    setPreviewUrl(null);
+    try {
+      const { url } = await getDownloadUrl(d.id, 900);
+      setPreviewUrl(url);
+    } catch (e) {
+      msg('No se pudo cargar la vista previa', 'danger');
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -663,45 +772,138 @@ function DocumentosTab({ expedienteId, canEdit }) {
   return (
     <div>
       {notice && <TabNotice notice={notice} />}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        {canEdit && <button className="btn btn-primary" onClick={() => { setForm(EMPTY_DOCUMENTO); setShowUpload(true); }} style={{ fontSize: 13, padding: '8px 16px' }}>📤 Subir Documento</button>}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          type="search"
+          placeholder="Buscar por título, archivo o descripción..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ flex: '1 1 220px', padding: '10px 14px', background: '#1e2a3a', border: `1px solid ${borderCol}`, borderRadius: 8, color: '#e2e8f0', fontSize: 13 }}
+        />
+        <select value={tipoFilter} onChange={(e) => setTipoFilter(e.target.value)} style={{ padding: '10px 14px', background: '#1e2a3a', border: `1px solid ${borderCol}`, borderRadius: 8, color: '#e2e8f0', fontSize: 13 }}>
+          <option value="">Todos los tipos</option>
+          {tiposDocumento.map((t) => <option key={t.id} value={String(t.id)}>{t.nombre}</option>)}
+        </select>
+        {canEdit && <button className="btn btn-primary" onClick={() => { setForm(EMPTY_DOCUMENTO); setShowUpload(true); }} style={{ fontSize: 13, padding: '10px 16px', whiteSpace: 'nowrap' }}>📤 Subir Documento</button>}
       </div>
       {error && <div style={{ color: '#fca5a5', fontSize: 13, marginBottom: 12 }}>⚠️ {error}</div>}
       {loading && documentos.length === 0 ? (
         <div style={{ color: '#9fb3cc', textAlign: 'center', padding: 40 }}>Cargando documentos...</div>
       ) : documentos.length === 0 ? (
         <div style={{ color: '#9fb3cc', textAlign: 'center', padding: 40 }}>No hay documentos cargados para este expediente.</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ color: '#9fb3cc', textAlign: 'center', padding: 40 }}>No se encontraron documentos con ese filtro.</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {documentos.map((d) => (
-            <div key={d.id} style={{ background: 'linear-gradient(135deg, #2a3a51, #1e2a3a)', border: `1px solid ${borderCol}`, borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>📄</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0' }}>{d.titulo || d.nombre_archivo}</span>
-                  {d.nombre_tipo_documento && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'rgba(79,209,197,0.1)', color: '#67e8f9', border: '1px solid rgba(79,209,197,0.2)' }}>{d.nombre_tipo_documento}</span>}
-                  {d.visibilidad_cliente && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'rgba(52,211,153,0.1)', color: '#34d399', border: '1px solid rgba(52,211,153,0.25)' }}>Visible cliente</span>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
+          {filtered.map((d) => {
+            const kind = fileKind(d.mime_type, d.nombre_archivo);
+            const meta = FILE_KIND_META[kind];
+            const thumb = thumbUrls[d.id];
+            return (
+              <div
+                key={d.id}
+                onClick={() => openPreview(d)}
+                style={{ background: 'linear-gradient(135deg, #2a3a51, #1e2a3a)', border: `1px solid ${borderCol}`, borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'pointer', transition: 'border-color 0.15s ease' }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = meta.color; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = borderCol; }}
+              >
+                <div style={{ aspectRatio: '4 / 3', background: thumb ? '#0d1522' : `${meta.color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                  {thumb ? (
+                    <img src={thumb} alt={d.titulo || d.nombre_archivo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <span style={{ fontSize: 42 }}>{meta.icon}</span>
+                  )}
+                  {d.visibilidad_cliente && (
+                    <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, padding: '2px 7px', borderRadius: 8, background: 'rgba(52,211,153,0.9)', color: '#052e21', fontWeight: 700 }}>Cliente</span>
+                  )}
                 </div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>
-                  {d.nombre_archivo} · {formatBytes(d.tamano_bytes)} · 📅 {fmtDate(d.fecha_carga)}
+                <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.titulo || d.nombre_archivo}>
+                    {d.titulo || d.nombre_archivo}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748b', display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ color: meta.color, fontWeight: 600 }}>{meta.label}</span>
+                    <span>· {formatBytes(d.tamano_bytes)}</span>
+                    <span>· {fmtDate(d.fecha_carga)}</span>
+                  </div>
+                  {d.nombre_tipo_documento && (
+                    <span style={{ alignSelf: 'flex-start', fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'rgba(79,209,197,0.1)', color: '#67e8f9', border: '1px solid rgba(79,209,197,0.2)' }}>{d.nombre_tipo_documento}</span>
+                  )}
+                  <div style={{ marginTop: 'auto', display: 'flex', gap: 6, paddingTop: 10 }} onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => openPreview(d)} title="Ver" style={iconBtnStyle('#4fd1c5')}>👁️</button>
+                    <button onClick={() => handleDownload(d)} title="Descargar" style={iconBtnStyle('#60a5fa')}>⬇️</button>
+                    {canEdit && <button onClick={() => openEdit(d)} title="Editar" style={iconBtnStyle('#fbbf24')}>✏️</button>}
+                    {canEdit && <button onClick={() => { setTarget(d); setShowDelete(true); }} title="Eliminar" style={iconBtnStyle('#ef4444')}>🗑️</button>}
+                  </div>
                 </div>
-                {d.descripcion && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>{d.descripcion}</div>}
               </div>
-              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                <button onClick={() => handleDownload(d)} style={{ padding: '4px 10px', background: '#4fd1c5', border: 'none', borderRadius: 6, color: 'white', fontSize: 11, cursor: 'pointer' }}>⬇️ Descargar</button>
-                {canEdit && <button onClick={() => { setTarget(d); setShowDelete(true); }} style={{ padding: '4px 8px', background: '#ef4444', border: 'none', borderRadius: 6, color: 'white', fontSize: 11, cursor: 'pointer' }}>🗑️</button>}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
+
       <Modal show={showUpload} onClose={() => setShowUpload(false)} title="📤 Subir Documento">
         <DocumentoForm f={form} onF={setForm} tipoDocumentoOpts={tipoDocumentoOpts} />
+        {uploading && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ height: 6, background: '#1e2a3a', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${uploadProgress ?? 0}%`, background: 'linear-gradient(90deg, #f0b942, #fc771c)', transition: 'width 0.2s ease' }} />
+            </div>
+            <div style={{ fontSize: 11, color: '#9fb3cc', marginTop: 4, textAlign: 'right' }}>{uploadProgress ?? 0}%</div>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
           <button className="btn btn-secondary" onClick={() => setShowUpload(false)} style={{ padding: '10px 20px' }} disabled={uploading}>Cancelar</button>
           <button className="btn btn-primary" onClick={handleUpload} style={{ padding: '10px 20px' }} disabled={uploading}>{uploading ? 'Subiendo...' : 'Subir'}</button>
         </div>
       </Modal>
+
+      <Modal show={showEdit && !!target} onClose={() => setShowEdit(false)} title="✏️ Editar Documento">
+        <DocumentoForm f={editForm} onF={setEditForm} tipoDocumentoOpts={tipoDocumentoOpts} showFile={false} />
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
+          <button className="btn btn-secondary" onClick={() => setShowEdit(false)} style={{ padding: '10px 20px' }}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleEditSave} style={{ padding: '10px 20px' }}>Guardar</button>
+        </div>
+      </Modal>
+
+      <Modal show={showPreview && !!target} onClose={() => setShowPreview(false)} title={target ? (target.titulo || target.nombre_archivo) : ''} size="lg">
+        {target && (() => {
+          const kind = fileKind(target.mime_type, target.nombre_archivo);
+          const meta = FILE_KIND_META[kind];
+          return (
+            <div>
+              <div style={{ background: '#0d1522', borderRadius: 10, minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: 16 }}>
+                {previewLoading ? (
+                  <div style={{ color: '#9fb3cc', padding: 40 }}>Cargando vista previa...</div>
+                ) : kind === 'image' && previewUrl ? (
+                  <img src={previewUrl} alt={target.titulo || target.nombre_archivo} style={{ maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain' }} />
+                ) : kind === 'pdf' && previewUrl ? (
+                  <iframe src={previewUrl} title={target.titulo || target.nombre_archivo} style={{ width: '100%', height: '65vh', border: 'none' }} />
+                ) : (
+                  <div style={{ color: '#9fb3cc', padding: 40, textAlign: 'center' }}>
+                    <div style={{ fontSize: 42, marginBottom: 10 }}>{meta.icon}</div>
+                    Vista previa no disponible para este tipo de archivo.
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, fontSize: 12, color: '#9fb3cc', marginBottom: 16 }}>
+                <div><span style={{ color: '#64748b' }}>Tipo</span><br />{target.nombre_tipo_documento || '—'}</div>
+                <div><span style={{ color: '#64748b' }}>Tamaño</span><br />{formatBytes(target.tamano_bytes)}</div>
+                <div><span style={{ color: '#64748b' }}>Subido</span><br />{fmtDate(target.fecha_carga)}</div>
+                <div><span style={{ color: '#64748b' }}>Por</span><br />{target.nombre_usuario_carga || '—'}</div>
+                {target.fecha_documento && <div><span style={{ color: '#64748b' }}>Fecha del documento</span><br />{fmtDate(target.fecha_documento)}</div>}
+                <div><span style={{ color: '#64748b' }}>Visible cliente</span><br />{target.visibilidad_cliente ? 'Sí' : 'No'}</div>
+              </div>
+              {target.descripcion && <p style={{ fontSize: 13, color: '#94a3b8', marginBottom: 16 }}>{target.descripcion}</p>}
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                {canEdit && <button className="btn btn-secondary" onClick={() => { setShowPreview(false); openEdit(target); }}>✏️ Editar</button>}
+                <button className="btn btn-primary" onClick={() => handleDownload(target)}>⬇️ Descargar</button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
+
       <DeleteModal show={showDelete && !!target} onClose={() => setShowDelete(false)} onConfirm={handleDelete} label={target?.titulo || target?.nombre_archivo} />
     </div>
   );

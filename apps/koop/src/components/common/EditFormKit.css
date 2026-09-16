@@ -136,6 +136,11 @@
   background: rgba(240, 185, 66, 0.06);
 }
 
+.kf-file-drop--active {
+  border-color: rgba(240, 185, 66, 0.8);
+  background: rgba(240, 185, 66, 0.12);
+}
+
 .kf-file-drop input[type='file'] {
   position: absolute;
   inset: 0;
