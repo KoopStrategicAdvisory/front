@@ -1,7 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useClientes } from '../../../hooks/useClientes';
 import { listRecentDocs } from '../../../api/docs';
+import { listExpedientes } from '../../../api/expedientes';
 import { useAuth } from '../../../context/AuthContext';
+import { estadoProcesoColor } from '../../../constants/estadoProceso';
 import '../../../styles/dashboard.css';
 import { SuccessNotice, DangerNotice } from '../../../components/common/Notice';
 import { EditForm, EditField, EditRow, EditSelect } from '../../../components/common/EditFormKit';
@@ -28,6 +31,32 @@ const TIPO_DOCUMENTO_OPTIONS = [
   { value: 'TI', label: 'Tarjeta de identidad' },
   { value: 'PE', label: 'Permiso especial' },
 ];
+
+function ClientExpedientesList({ clienteId, expedientes, loading, onOpen }) {
+  if (loading) return <div style={{ textAlign: 'center', padding: 24, color: '#cbd5e1' }}>Cargando expedientes...</div>;
+  if (!expedientes || expedientes.length === 0) {
+    return <div style={{ textAlign: 'center', padding: 24, color: '#cbd5e1' }}>Este cliente todavía no tiene expedientes registrados.</div>;
+  }
+  return (
+    <div style={{ border: '1px solid #394b61', borderRadius: 8, overflow: 'hidden', background: '#1b263b' }}>
+      {expedientes.map((exp) => (
+        <div
+          key={exp.id}
+          onClick={() => onOpen(exp.id)}
+          style={{ padding: '10px 14px', borderBottom: '1px solid #394b61', color: '#e2e8f0', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}
+        >
+          <div>
+            <span style={{ fontWeight: 600 }}>{exp.numero_de_expediente}</span>
+            {exp.nombre_tipo_proceso && <span style={{ color: '#9fb3cc', marginLeft: 8 }}>{exp.nombre_tipo_proceso}</span>}
+          </div>
+          <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 8, background: `${estadoProcesoColor(exp.nombre_estado_proceso)}22`, color: estadoProcesoColor(exp.nombre_estado_proceso), border: `1px solid ${estadoProcesoColor(exp.nombre_estado_proceso)}44`, fontWeight: 600 }}>
+            {exp.nombre_estado_proceso || 'Sin estado'}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function CreateClientModal({ onClose, onSubmit }) {
   const [form, setForm] = useState({ ...EMPTY_CLIENT_FORM });
@@ -96,6 +125,7 @@ function CreateClientModal({ onClose, onSubmit }) {
 
 export default function ClientesActivos() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const roles = Array.isArray(user?.roles) ? user.roles : [user?.roles].filter(Boolean);
   const isAdmin = roles.some((r) => String(r || '').toLowerCase() === 'admin');
 
@@ -113,6 +143,8 @@ export default function ClientesActivos() {
   const [expandedClient, setExpandedClient] = useState(null);
   const [clientFiles, setClientFiles] = useState({});
   const [loadingFiles, setLoadingFiles] = useState({});
+  const [clientExpedientes, setClientExpedientes] = useState({});
+  const [loadingExpedientes, setLoadingExpedientes] = useState({});
   const noticeTimer = useRef(null);
 
   const showNotice = useCallback((msg, kind = 'success') => {
@@ -152,11 +184,28 @@ export default function ClientesActivos() {
     }
   }, [folderForClient]);
 
+  // Antes, al expandir un cliente solo se veian sus "archivos recientes" (la
+  // boveda S3 vieja) — nunca sus expedientes reales, que es la informacion
+  // que de verdad importa saber al abrir un cliente (que casos tiene, en que
+  // estado van). Se carga junto con los archivos, no en su reemplazo.
+  const loadClientExpedientes = useCallback(async (c) => {
+    setLoadingExpedientes((prev) => ({ ...prev, [c.id]: true }));
+    try {
+      const data = await listExpedientes({ id_cliente: c.id, limit: 100 });
+      setClientExpedientes((prev) => ({ ...prev, [c.id]: data.items ?? [] }));
+    } catch {
+      setClientExpedientes((prev) => ({ ...prev, [c.id]: [] }));
+    } finally {
+      setLoadingExpedientes((prev) => ({ ...prev, [c.id]: false }));
+    }
+  }, []);
+
   const toggleClientExpansion = useCallback(async (c) => {
     if (expandedClient === c.id) { setExpandedClient(null); return; }
     setExpandedClient(c.id);
-    if (!clientFiles[c.id]) await loadClientFiles(c);
-  }, [expandedClient, clientFiles, loadClientFiles]);
+    if (!clientFiles[c.id]) loadClientFiles(c);
+    if (!clientExpedientes[c.id]) loadClientExpedientes(c);
+  }, [expandedClient, clientFiles, loadClientFiles, clientExpedientes, loadClientExpedientes]);
 
   const onEdit = (c) => setEditing({
     id: c.id,
@@ -313,7 +362,14 @@ export default function ClientesActivos() {
                     <tr key={`expanded-${c.id}`}>
                       <td colSpan={5} style={{ padding: 0, background: '#0c1530' }}>
                         <div style={{ padding: 20 }}>
-                          <h4 style={{ margin: '0 0 16px', color: '#e2e8f0' }}>Archivos recientes — {c.nombre}</h4>
+                          <h4 style={{ margin: '0 0 12px', color: '#e2e8f0' }}>Expedientes — {c.nombre}</h4>
+                          <ClientExpedientesList
+                            clienteId={c.id}
+                            expedientes={clientExpedientes[c.id]}
+                            loading={!!loadingExpedientes[c.id]}
+                            onOpen={(id) => navigate(`/admin/expedientes/${id}`)}
+                          />
+                          <h4 style={{ margin: '20px 0 16px', color: '#e2e8f0' }}>Archivos recientes — {c.nombre}</h4>
                           {loadingFiles[c.id] ? (
                             <div style={{ textAlign: 'center', padding: 24, color: '#cbd5e1' }}>Cargando archivos...</div>
                           ) : (!clientFiles[c.id] || clientFiles[c.id].length === 0) ? (
@@ -361,6 +417,13 @@ export default function ClientesActivos() {
                     <div className="kv"><span>Email</span><div>{c.email || '-'}</div></div>
                     <div className="kv" style={{ marginTop: 6 }}><span>Documento</span><div>{c.numero_documento || '-'}</div></div>
                     <div className="kv" style={{ marginTop: 6 }}><span>Celular</span><div>{c.telefono || '-'}</div></div>
+                    <h4 style={{ margin: '14px 0 8px', color: '#e2e8f0', fontSize: 14 }}>Expedientes</h4>
+                    <ClientExpedientesList
+                      clienteId={c.id}
+                      expedientes={clientExpedientes[c.id]}
+                      loading={!!loadingExpedientes[c.id]}
+                      onOpen={(id) => navigate(`/admin/expedientes/${id}`)}
+                    />
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10, gap: 8 }}>
                       <button className="btn btn-primary btn-sm" onClick={() => onEdit(c)}>Editar</button>
                       <button className="btn btn-secondary btn-sm" onClick={() => setConfirmDeleteClient(c)}>Eliminar</button>
