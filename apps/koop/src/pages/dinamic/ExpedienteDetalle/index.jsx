@@ -1140,6 +1140,8 @@ export default function ExpedienteDetalle() {
                   {selectedExpediente.numero_radicado_despacho && <span>Radicado despacho: <span style={{ color: '#94a3b8' }}>{selectedExpediente.numero_radicado_despacho}</span></span>}
                   {selectedExpediente.nombre_contraparte && <span>Contraparte: <span style={{ color: '#94a3b8' }}>{selectedExpediente.nombre_contraparte}</span></span>}
                   {selectedExpediente.juzgado_o_autoridad_que_conoce && <span>Juzgado: <span style={{ color: '#94a3b8' }}>{selectedExpediente.juzgado_o_autoridad_que_conoce}</span></span>}
+                  {selectedExpediente.correo_juzgado && <span>Correo juzgado: <span style={{ color: '#94a3b8' }}>{selectedExpediente.correo_juzgado}</span></span>}
+                  {selectedExpediente.direccion_juzgado && <span>Dirección juzgado: <span style={{ color: '#94a3b8' }}>{selectedExpediente.direccion_juzgado}</span></span>}
                   {selectedExpediente.calidad_usuario && <span style={{ textTransform: 'capitalize' }}>Calidad: <span style={{ color: '#94a3b8' }}>{selectedExpediente.calidad_usuario}</span></span>}
                 </div>
               </div>

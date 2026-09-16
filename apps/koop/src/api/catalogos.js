@@ -124,6 +124,18 @@ export async function deleteEtapaProcesal(id) {
   return response.data;
 }
 
+// ─── Contraparte ──────────────────────────────────────────────────────────────
+
+export async function listContraparte() {
+  const response = await api.get('/catalogos/contraparte');
+  return toListResponse(response.data).items;
+}
+
+export async function createContraparte(data) {
+  const response = await api.post('/catalogos/contraparte', data);
+  return response.data;
+}
+
 // ─── Combinación tipo de proceso + subtipo + pretensión ──────────────────────
 
 export async function listTipoProcCombo() {
