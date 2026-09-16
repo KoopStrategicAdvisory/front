@@ -16,17 +16,20 @@ function getUserInfo(userId, admins) {
 }
 
 function fmtDate(iso) {
+  if (!iso) return '—';
   try { return new Date(iso + 'T00:00:00').toLocaleDateString('es-CO', { year: 'numeric', month: 'short', day: '2-digit' }); } catch { return iso; }
 }
 
 function isOverdue(iso) {
+  if (!iso) return false;
   try { return new Date(iso) < new Date(new Date().toDateString()); } catch { return false; }
 }
 
-function TaskFormFields({ formData, setFormData, admins, estados, prioridades }) {
+function TaskFormFields({ formData, setFormData, admins, estados, prioridades, expedientes, isEdit }) {
   const adminOptions = admins.map((admin) => ({ value: admin.id, label: admin.nombre || admin.email || 'Administrador' }));
   const prioOptions = prioridades.map((p) => ({ value: p.id, label: p.nombre }));
   const estadoOptions = estados.map((e) => ({ value: e.id, label: e.nombre }));
+  const expedienteOptions = expedientes.map((e) => ({ value: e.id, label: `${e.numero_de_expediente}${e.nombre_cliente ? ` — ${e.nombre_cliente}` : ''}` }));
 
   const handleChange = (field) => (event) => {
     const { value } = event.target;
@@ -44,13 +47,24 @@ function TaskFormFields({ formData, setFormData, admins, estados, prioridades })
           onChange={handleChange('title')}
           inputProps={{ placeholder: 'Título de la tarea' }}
         />
-        <EditField
-          label="Cliente / Observaciones"
-          value={formData.client}
-          onChange={handleChange('client')}
-          inputProps={{ placeholder: 'Nombre del cliente' }}
+        {/* Toda tarea pertenece a un expediente (id_expediente es NOT NULL en el backend) —
+            no se puede reasignar despues de creada, asi que en edicion se muestra fijo. */}
+        <EditSelect
+          label="Expediente *"
+          value={formData.expedienteId || ''}
+          onChange={handleChange('expedienteId')}
+          options={expedienteOptions}
+          placeholder={expedientes.length ? 'Selecciona expediente' : 'Cargando...'}
+          selectProps={{ disabled: isEdit || !expedientes.length }}
         />
       </EditRow>
+
+      <EditField
+        label="Cliente / Observaciones"
+        value={formData.client}
+        onChange={handleChange('client')}
+        inputProps={{ placeholder: 'Notas adicionales (opcional)' }}
+      />
 
       <EditTextArea
         label="Descripción"
@@ -69,7 +83,7 @@ function TaskFormFields({ formData, setFormData, admins, estados, prioridades })
           placeholder={prioOptions.length ? 'Selecciona prioridad' : 'Cargando...'}
         />
         <EditSelect
-          label="Estado"
+          label="Estado *"
           value={formData.estadoId || ''}
           onChange={handleChange('estadoId')}
           options={estadoOptions}
@@ -94,21 +108,6 @@ function TaskFormFields({ formData, setFormData, admins, estados, prioridades })
           selectProps={{ disabled: !admins.length }}
         />
       </EditRow>
-
-      <EditRow cols={2}>
-        <EditField
-          label="Tags (separados por comas)"
-          value={formData.tags || ''}
-          onChange={handleChange('tags')}
-          inputProps={{ placeholder: 'Laboral, Audiencia, Civil' }}
-        />
-        <EditField
-          label="Radicado"
-          value={formData.radicado || ''}
-          onChange={handleChange('radicado')}
-          inputProps={{ placeholder: 'Número de radicado (opcional)' }}
-        />
-      </EditRow>
     </EditForm>
   );
 }
@@ -118,6 +117,7 @@ export default function AdminTareas() {
     isAdmin,
     canAccess,
     admins,
+    expedientes,
     estados,
     prioridades,
     loading,
@@ -238,7 +238,7 @@ export default function AdminTareas() {
           <div style={{ flex: '1', minWidth: '300px' }}>
             <input
               type="search"
-              placeholder="Buscar por asunto, cliente o radicado..."
+              placeholder="Buscar por título o expediente..."
               value={q}
               onChange={(e) => setQ(e.target.value)}
               style={{ width: '100%', padding: '12px 16px', background: '#1e2a3a', border: '1px solid #394b61', borderRadius: '8px', color: '#e2e8f0', fontSize: '14px' }}
@@ -332,38 +332,26 @@ export default function AdminTareas() {
                       <div style={{ marginBottom: '16px' }}>
                         <h4 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: '600', color: '#e2e8f0', lineHeight: '1.4' }}>{t.title}</h4>
                         <p style={{ margin: 0, fontSize: '14px', color: '#9fb3cc' }}>
-                          Cliente: <strong style={{ color: '#4fd1c5' }}>{t.client}</strong>
+                          Expediente: <strong style={{ color: '#4fd1c5' }}>{t.numeroExpediente || '—'}</strong>
                         </p>
+                        {t.client && (
+                          <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#9fb3cc' }}>{t.client}</p>
+                        )}
                       </div>
 
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
-                        {t.priorityId !== '' && (
+                        {t.prioridadNombre && (
                           <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', background: 'rgba(79, 209, 197, 0.15)', color: '#67e8f9', border: '1px solid rgba(79, 209, 197, 0.3)' }}>
-                            PRIORIDAD #{t.priorityId}
+                            {t.prioridadNombre.toUpperCase()}
                           </span>
                         )}
                         <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', background: t.status === 'hecho' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(156, 163, 175, 0.15)', color: t.status === 'hecho' ? '#bbf7d0' : '#d1d5db', border: `1px solid ${t.status === 'hecho' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(156, 163, 175, 0.3)'}` }}>
-                          {statusTxt}
+                          {t.estadoNombre || statusTxt}
                         </span>
                         <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', background: isOverdue(t.due) ? 'rgba(239, 68, 68, 0.15)' : 'rgba(79, 209, 197, 0.15)', color: isOverdue(t.due) ? '#fecaca' : '#67e8f9', border: `1px solid ${isOverdue(t.due) ? 'rgba(239, 68, 68, 0.3)' : 'rgba(79, 209, 197, 0.3)'}` }}>
                           {isOverdue(t.due) ? 'VENCIDA' : 'VENCE'}: {fmtDate(t.due)}
                         </span>
-                        {t.radicado && (
-                          <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', background: 'rgba(79, 209, 197, 0.15)', color: '#67e8f9', border: '1px solid rgba(79, 209, 197, 0.3)' }}>
-                            {t.radicado}
-                          </span>
-                        )}
                       </div>
-
-                      {(t.tags || []).length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
-                          {(t.tags || []).map((tag) => (
-                            <span key={tag} style={{ fontSize: '10px', padding: '3px 6px', borderRadius: '8px', background: 'rgba(156, 163, 175, 0.1)', color: '#9fb3cc', border: '1px solid rgba(156, 163, 175, 0.2)' }}>
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
 
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '12px', borderTop: '1px solid #394b61' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -433,7 +421,7 @@ export default function AdminTareas() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
           <div style={{ background: '#1e2a3a', borderRadius: '12px', padding: '24px', maxWidth: '500px', width: '90%', border: '1px solid #394b61', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
             <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: '600', color: '#e2e8f0' }}>➕ Nueva Tarea</h3>
-            <TaskFormFields formData={formData} setFormData={setFormData} admins={admins} estados={estados} prioridades={prioridades} />
+            <TaskFormFields formData={formData} setFormData={setFormData} admins={admins} estados={estados} prioridades={prioridades} expedientes={expedientes} />
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
               <button className="btn btn-secondary" onClick={() => { closeCreateModal(); resetForm(); }} style={{ padding: '10px 20px' }}>Cancelar</button>
               <button className="btn btn-primary" onClick={handleCreateTask} style={{ padding: '10px 20px' }}>Crear Tarea</button>
@@ -446,7 +434,7 @@ export default function AdminTareas() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
           <div style={{ background: '#1e2a3a', borderRadius: '12px', padding: '24px', maxWidth: '500px', width: '90%', border: '1px solid #394b61', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
             <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: '600', color: '#e2e8f0' }}>✏️ Editar Tarea</h3>
-            <TaskFormFields formData={formData} setFormData={setFormData} admins={admins} estados={estados} prioridades={prioridades} />
+            <TaskFormFields formData={formData} setFormData={setFormData} admins={admins} estados={estados} prioridades={prioridades} expedientes={expedientes} isEdit />
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
               <button className="btn btn-secondary" onClick={() => { closeEditModal(); resetForm(); }} style={{ padding: '10px 20px' }}>Cancelar</button>
               <button className="btn btn-primary" onClick={handleEditTask} style={{ padding: '10px 20px' }}>Actualizar Tarea</button>
