@@ -20,44 +20,74 @@ function estadoIdForColumna(columna, estadosCatalog) {
   return estadosCatalog.find((e) => String(e.nombre).trim().toLowerCase() === nombre)?.id ?? null;
 }
 
-// ─── DnD helpers ──────────────────────────────────────────────────────────────
-// Reescrito: usaba campos SCREAMING_SNAKE_CASE/_id de una version anterior del
-// backend (Mongo) — pos._id, pos.ID_COLUMNA, pos.ORDEN_VERTICAL... — que nunca
-// existieron en el backend real (snake_case: pos.id, pos.id_columna...), asi
-// que el tablero siempre se veia vacio/roto. Tambien llamaba a
-// 'reordenarPosiciones', una funcion que el hook real nunca expuso (solo
-// existe 'moverTarea', que mueve una tarea a otra columna) — arrastrar
-// cualquier tarjeta tiraba un TypeError en consola.
-function useDnD(onCardDrop) {
-  const dragging = useRef(null);
+// ─── Drag helpers ─────────────────────────────────────────────────────────────
+// Reescrito dos veces: primero usaba campos SCREAMING_SNAKE_CASE/_id de una
+// version anterior del backend (Mongo), y llamaba a una funcion que el hook
+// real nunca expuso — eso ya se corrigio. Pero el drag-and-drop NATIVO de
+// HTML5 (draggable + dragstart/dragover/drop) resulto ser poco confiable con
+// un mouse real: en uso real la tarjeta se quedaba "pegada" sin mover nada y
+// sin ni siquiera mandar una peticion al backend (dragover/drop nunca
+// llegaban a completarse), aunque en pruebas automatizadas sí funcionaba. Se
+// reemplaza por un drag basado en mousedown/mousemove/mouseup — el mismo
+// enfoque que usan Trello/Linear por lo mismo: el HTML5 DnD nativo es
+// notoriamente inconsistente entre navegadores y situaciones reales.
+function usePointerDnD(onCardDrop, onCardClick) {
+  const dragRef = useRef(null);
+  const [draggingId, setDraggingId] = useState(null);
+  const [hoverColumnId, setHoverColumnId] = useState(null);
 
-  const onDragStart = useCallback((e, pos) => {
-    if (pos.tipo_entidad !== 'tarea') return; // solo se soporta mover tareas por ahora
-    dragging.current = pos;
-    e.dataTransfer.effectAllowed = 'move';
-  }, []);
-
-  const onDragOver = useCallback((e) => {
+  const onCardMouseDown = useCallback((e, pos, tarea) => {
+    if (pos.tipo_entidad !== 'tarea' || !tarea || e.button !== 0) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  }, []);
+    const startX = e.clientX;
+    const startY = e.clientY;
+    dragRef.current = { pos, tarea, dragging: false };
 
-  const onDrop = useCallback((e, columnaId) => {
-    e.preventDefault();
-    const pos = dragging.current;
-    dragging.current = null;
-    if (!pos || pos.id_columna === columnaId) return;
-    onCardDrop(pos, columnaId);
-  }, [onCardDrop]);
+    const onMove = (ev) => {
+      const st = dragRef.current;
+      if (!st) return;
+      if (!st.dragging) {
+        // Umbral de unos pocos pixeles para distinguir un clic (abrir detalle)
+        // de un arrastre de verdad — sin esto, cualquier micro-temblor del
+        // mouse al hacer clic se interpretaria como intento de arrastre.
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
+        st.dragging = true;
+        setDraggingId(st.pos.id);
+      }
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      const colEl = el?.closest('[data-columna-id]');
+      setHoverColumnId(colEl?.getAttribute('data-columna-id') ?? null);
+    };
 
-  return { onDragStart, onDragOver, onDrop };
+    const onUp = (ev) => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      const st = dragRef.current;
+      dragRef.current = null;
+      setDraggingId(null);
+      setHoverColumnId(null);
+      if (!st) return;
+      if (st.dragging) {
+        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+        const columnaId = el?.closest('[data-columna-id]')?.getAttribute('data-columna-id');
+        if (columnaId && String(columnaId) !== String(st.pos.id_columna)) onCardDrop(st.pos, columnaId);
+      } else {
+        onCardClick(st.tarea);
+      }
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [onCardDrop, onCardClick]);
+
+  return { onCardMouseDown, draggingId, hoverColumnId };
 }
 
 // ─── Card component ───────────────────────────────────────────────────────────
 // Clic (sin arrastrar) abre el panel de detalle de la tarea — igual que en
 // Trello/Linear/Asana, donde una tarjeta es tambien un botón hacia el detalle
 // completo, no solo un objeto para arrastrar.
-function KanbanCard({ pos, tarea, onDragStart, onCardClick }) {
+function KanbanCard({ pos, tarea, onCardMouseDown, isDragging }) {
   const titulo = tarea?.titulo || pos.titulo_tarea || `Tarea #${pos.id_tarea}`;
   const estado = tarea?.nombre_estado_tarea || '';
   const limite = tarea?.fecha_limite;
@@ -67,18 +97,17 @@ function KanbanCard({ pos, tarea, onDragStart, onCardClick }) {
 
   return (
     <div
-      draggable={isTarea}
-      onDragStart={(e) => onDragStart(e, pos)}
-      onClick={() => isTarea && tarea && onCardClick(tarea)}
+      onMouseDown={(e) => onCardMouseDown(e, pos, tarea)}
       style={{
         background: 'linear-gradient(135deg, #283447, #1c2c3e)',
         border: `1px solid ${isOverdue ? 'rgba(239,68,68,0.4)' : borderCol}`,
         borderRadius: 8,
         padding: '10px 12px',
-        cursor: isTarea ? 'pointer' : 'default',
+        cursor: isTarea ? 'grab' : 'default',
         userSelect: 'none',
         marginBottom: 8,
-        transition: 'box-shadow 0.15s',
+        opacity: isDragging ? 0.4 : 1,
+        transition: 'box-shadow 0.15s, opacity 0.15s',
       }}
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
@@ -101,23 +130,23 @@ function KanbanCard({ pos, tarea, onDragStart, onCardClick }) {
 }
 
 // ─── Column component ─────────────────────────────────────────────────────────
-function KanbanColumn({ columna, cards, tareasById, onDragStart, onDragOver, onDrop, onCardClick }) {
+function KanbanColumn({ columna, cards, tareasById, onCardMouseDown, draggingId, isHovered }) {
   const wipExceeded = columna.wip_limit && cards.length > columna.wip_limit;
   return (
     <div
+      data-columna-id={columna.id}
       style={{
         minWidth: 260,
         maxWidth: 300,
         flex: '0 0 auto',
-        background: '#1a2535',
-        border: `1px solid ${borderCol}`,
+        background: isHovered ? '#22304a' : '#1a2535',
+        border: `1px solid ${isHovered ? '#6366f1' : borderCol}`,
         borderRadius: 12,
         display: 'flex',
         flexDirection: 'column',
         maxHeight: 'calc(100vh - 260px)',
+        transition: 'background 0.1s, border-color 0.1s',
       }}
-      onDragOver={onDragOver}
-      onDrop={(e) => onDrop(e, columna.id)}
     >
       {/* Column header */}
       <div style={{
@@ -151,7 +180,7 @@ function KanbanColumn({ columna, cards, tareasById, onDragStart, onDragOver, onD
           cards
             .sort((a, b) => (a.orden_vertical ?? 0) - (b.orden_vertical ?? 0))
             .map((pos) => (
-              <KanbanCard key={pos.id} pos={pos} tarea={tareasById[pos.id_tarea]} onDragStart={onDragStart} onCardClick={onCardClick} />
+              <KanbanCard key={pos.id} pos={pos} tarea={tareasById[pos.id_tarea]} onCardMouseDown={onCardMouseDown} isDragging={draggingId === pos.id} />
             ))
         )}
       </div>
@@ -248,6 +277,9 @@ export default function KanbanPage() {
   const [showCreateTablero, setShowCreateTablero] = useState(false);
   const [tableroListKey, setTableroListKey] = useState(0);
   const [tareasById, setTareasById] = useState({});
+  const [dropError, setDropError] = useState(null);
+
+  useEffect(() => { if (dropError) { const t = setTimeout(() => setDropError(null), 5000); return () => clearTimeout(t); } }, [dropError]);
 
   const onSelectTablero = (id) => {
     setTableroId(id);
@@ -309,11 +341,20 @@ export default function KanbanPage() {
       await moverTarea(pos.id_tarea, columnaId);
       const columnaDestino = columnas.find((c) => String(c.id) === String(columnaId));
       const estadoId = estadoIdForColumna(columnaDestino, estadosCatalog);
-      if (estadoId != null) {
-        await updateTarea(pos.id_tarea, { id_estado_tarea: estadoId });
-        await refreshTareas();
-      }
-    } catch { /* moverTarea ya deja su propio error en el hook */ }
+      if (estadoId != null) await updateTarea(pos.id_tarea, { id_estado_tarea: estadoId });
+    } catch (e) {
+      // Si el estado no se pudo sincronizar (o la posicion no se pudo mover),
+      // no fallar en silencio: sin esto, la tarjeta podia "regresar sola" a la
+      // columna vieja en la siguiente reconciliacion (que compara contra el
+      // estado real) sin que quedara claro por que — se veia como que el
+      // arrastre "no funcionaba", cuando en realidad si se intento pero fallo.
+      setDropError(e?.response?.data?.message || e?.message || 'No se pudo mover la tarjeta');
+    } finally {
+      // Siempre se refresca, haya fallado o no el paso de sincronizar el
+      // estado — asi tareasById nunca queda desactualizado respecto a
+      // 'posiciones', que es justo lo que la reconciliacion de abajo compara.
+      await refreshTareas();
+    }
   }, [moverTarea, columnas, estadosCatalog, refreshTareas]);
 
   const esTableroPersonalPropio = tablero?.tipo_ambito === 'personal' && String(tablero?.id_usuario_propietario) === String(user?.id);
@@ -375,7 +416,7 @@ export default function KanbanPage() {
     await refreshTareas();
   }, [handleEditTask, refreshTareas]);
 
-  const { onDragStart, onDragOver, onDrop } = useDnD(onCardDrop);
+  const { onCardMouseDown, draggingId, hoverColumnId } = usePointerDnD(onCardDrop, onCardClick);
 
   const columnasOrdenadas = useMemo(() => [...columnas].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0)), [columnas]);
 
@@ -441,10 +482,9 @@ export default function KanbanPage() {
                     columna={col}
                     cards={getTarjetasPorColumna(col.id)}
                     tareasById={tareasById}
-                    onDragStart={onDragStart}
-                    onDragOver={onDragOver}
-                    onDrop={onDrop}
-                    onCardClick={onCardClick}
+                    onCardMouseDown={onCardMouseDown}
+                    draggingId={draggingId}
+                    isHovered={String(hoverColumnId) === String(col.id)}
                   />
                 ))
               )}
@@ -470,6 +510,14 @@ export default function KanbanPage() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span>❌ {noticeMessage}</span>
             <button onClick={() => setShowErrorNotice(false)} style={{ background: 'transparent', border: 'none', color: '#fecaca', fontSize: 18, cursor: 'pointer', marginLeft: 10 }}>×</button>
+          </div>
+        </div>
+      )}
+      {dropError && (
+        <div style={{ position: 'fixed', top: 20, right: 20, background: '#7f1d1d', color: '#fecaca', padding: 16, borderRadius: 8, border: '1px solid rgba(248,113,113,0.35)', boxShadow: '0 6px 18px rgba(0,0,0,0.25)', zIndex: 10001, maxWidth: 400 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>❌ {dropError}</span>
+            <button onClick={() => setDropError(null)} style={{ background: 'transparent', border: 'none', color: '#fecaca', fontSize: 18, cursor: 'pointer', marginLeft: 10 }}>×</button>
           </div>
         </div>
       )}
