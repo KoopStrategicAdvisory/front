@@ -29,7 +29,9 @@ export default function Register() {
         if (payload?.accessToken) {
           navigate('/dashboard');
         } else {
-          setSuccess('Registro recibido. Revisa tu correo para continuar con la activación de tu cuenta.');
+          // El mensaje real lo decide el backend (evita duplicar el texto en
+          // dos lugares); el respaldo tambien recuerda revisar spam.
+          setSuccess(payload?.message || 'Registro recibido. Revisa tu correo (y también spam/no deseados) para continuar con la activación de tu cuenta.');
           setForm({ name: '', email: '', password: '', tipoDocumento: 'CC', numeroDocumento: '' });
         }
       } else {
@@ -116,6 +118,21 @@ export default function Register() {
             <small style={{ color: '#9fb3cc', display: 'block', marginTop: 6, fontSize: 12 }}>
               Si ya eres cliente de la firma, con esto vinculamos tu cuenta a tu expediente.
             </small>
+          </div>
+
+          {/* Aviso siempre visible (no depende de si el documento hizo match
+              o no — mostrarlo solo quando falla revelaria esa informacion) */}
+          <div
+            style={{
+              display: 'flex', gap: 8, alignItems: 'flex-start',
+              background: 'rgba(240,185,66,0.08)', border: '1px solid rgba(240,185,66,0.25)',
+              borderRadius: 10, padding: '10px 12px', marginBottom: 18, fontSize: 12.5, color: '#f6cd72',
+            }}
+          >
+            <span aria-hidden="true">⚠️</span>
+            <span>
+              Verifica bien tu <strong>número de documento</strong> y tu <strong>correo</strong> antes de enviar — si tienen un error de tipeo, tu cuenta no se podrá vincular a tu expediente automáticamente.
+            </span>
           </div>
           <div className="input-group">
             <label htmlFor="password">Contrasena</label>

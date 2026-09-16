@@ -8,6 +8,7 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [sentMessage, setSentMessage] = useState('');
   const [error, setError] = useState('');
 
   const onSubmit = async (e) => {
@@ -15,7 +16,8 @@ export default function ForgotPassword() {
     setError('');
     setLoading(true);
     try {
-      await forgotPasswordApi({ email });
+      const data = await forgotPasswordApi({ email });
+      setSentMessage(data?.message || 'Si el correo existe en nuestro sistema, recibirás un enlace (revisa también spam/no deseados).');
       setSent(true);
     } catch (err) {
       setError(err?.message || 'No se pudo procesar la solicitud');
@@ -35,9 +37,7 @@ export default function ForgotPassword() {
         <h2>Recuperar contraseña</h2>
         {error && <div className="auth-error">{error}</div>}
         {sent ? (
-          <div className="auth-info">
-            Si el correo existe en nuestro sistema, recibirás un enlace para restablecer tu contraseña.
-          </div>
+          <div className="auth-info">{sentMessage}</div>
         ) : (
           <form onSubmit={onSubmit}>
             <div className="input-group">
