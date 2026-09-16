@@ -1151,6 +1151,9 @@ export default function ExpedienteDetalle() {
                   {selectedExpediente.nombre_subtipo_proceso && (
                     <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 10, background: 'rgba(99,102,241,0.1)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>{selectedExpediente.nombre_subtipo_proceso}</span>
                   )}
+                  {selectedExpediente.nombre_tipo_pretension && (
+                    <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 10, background: 'rgba(240,185,66,0.1)', color: '#f0b942', border: '1px solid rgba(240,185,66,0.25)' }}>{selectedExpediente.nombre_tipo_pretension}</span>
+                  )}
                   <EstadoProcesoField expediente={selectedExpediente} canEdit={canEdit} estadosProceso={estadosProceso} onChange={handleEstadoChange} />
                 </div>
                 {estadoNotice && <div style={{ fontSize: 12, color: estadoNotice.type === 'danger' ? '#fca5a5' : '#a7f3d0', marginBottom: 6 }}>{estadoNotice.type === 'danger' ? '❌' : '✅'} {estadoNotice.text}</div>}

@@ -4,7 +4,7 @@ import { useExpedientes } from '../../../hooks/useExpedientes';
 import { listExpedientes } from '../../../api/expedientes';
 import { useAccess } from '../../../context/AccessContext';
 import { useAuth } from '../../../context/AuthContext';
-import { listTiposProceso, listTipoProcCombo, listSubtiposProceso, listTiposPretension, listContraparte, createContraparte } from '../../../api/catalogos';
+import { listTiposProceso, listTipoProcCombo, listSubtiposProceso, listTiposPretension } from '../../../api/catalogos';
 import { listClientes } from '../../../api/clientes';
 import { EditForm, EditRow, EditField, EditSelect } from '../../../components/common/EditFormKit';
 import { Modal, DeleteModal } from '../../../components/common/Modal';
@@ -14,7 +14,6 @@ import '../../../styles/dashboard.css';
 import '../../../styles/mi-expediente.css';
 
 const PAGE_SIZE = 20;
-const NUEVA_CONTRAPARTE = '__nueva__';
 
 const EMPTY_FORM = {
   _anio: '',
@@ -22,8 +21,7 @@ const EMPTY_FORM = {
   _secuenciaAuto: true,
   numero_radicado_despacho: '',
   id_cliente: '',
-  id_contraparte: '',
-  _contraparteNueva: '',
+  contraparte: '',
   juzgado_o_autoridad_que_conoce: '',
   correo_juzgado: '',
   direccion_juzgado: '',
@@ -52,7 +50,7 @@ const WIZARD_STEPS = ['Datos básicos', 'Materia del caso', 'Confirmar'];
 // (datos básicos -> materia del caso en cascada -> confirmación), con
 // transiciones animadas entre pasos y revelado progresivo de los campos
 // dependientes (subtipo tras elegir tipo, pretensión tras elegir subtipo).
-function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProceso, tiposPretension, clientes, contrapartes, onAnioChange, onSubmit, onCancel, submitLabel, submitting, startMaxReached = 0 }) {
+function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProceso, tiposPretension, clientes, onAnioChange, onSubmit, onCancel, submitLabel, submitting, startMaxReached = 0 }) {
   const [step, setStep] = useState(0);
   const [maxReached, setMaxReached] = useState(startMaxReached);
   const [direction, setDirection] = useState(1);
@@ -77,16 +75,15 @@ function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProces
   const nombrePretension = (id) => tiposPretension.find((p) => String(p.id) === String(id))?.nombre || `Pretensión #${id}`;
   const nombreCliente = clientes.find((c) => String(c.id) === String(form.id_cliente))?.nombre;
   const nombreTipoProceso = tiposProceso.find((t) => String(t.id) === String(form._tipoProceso))?.nombre;
-  const nombreContraparte = form.id_contraparte === NUEVA_CONTRAPARTE
-    ? form._contraparteNueva
-    : contrapartes.find((c) => String(c.id) === String(form.id_contraparte))?.nombre;
+  const pretensionSeleccionada = combos.find((c) => String(c.id) === String(form.id_tipo_proc_subtipo_proc_tipo_pre));
+  const materiaCompleta = [
+    nombreTipoProceso,
+    form._subtipoProceso && nombreSubtipo(form._subtipoProceso),
+    pretensionSeleccionada && nombrePretension(pretensionSeleccionada.id_tipo_pretension),
+  ].filter(Boolean).join(' · ');
 
   const clienteOptions = clientes.map((c) => ({ value: String(c.id), label: c.nombre }));
   const tipoOptions = useMemo(() => tiposProceso.map((t) => ({ value: String(t.id), label: t.nombre })), [tiposProceso]);
-  const contraparteOptions = useMemo(() => [
-    ...contrapartes.map((c) => ({ value: String(c.id), label: c.nombre })),
-    { value: NUEVA_CONTRAPARTE, label: '+ Agregar nueva contraparte...' },
-  ], [contrapartes]);
 
   const subtipoOptions = useMemo(() => {
     if (!form._tipoProceso) return [];
@@ -108,9 +105,7 @@ function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProces
   const onSubtipo = (e) => onChange({ ...form, _subtipoProceso: e.target.value, id_tipo_proc_subtipo_proc_tipo_pre: '' });
   const onPretension = (e) => onChange({ ...form, id_tipo_proc_subtipo_proc_tipo_pre: e.target.value });
 
-  const contraparteValid = form.id_contraparte === NUEVA_CONTRAPARTE
-    ? !!form._contraparteNueva.trim()
-    : !!form.id_contraparte;
+  const contraparteValid = !!form.contraparte.trim();
   const correoJuzgadoValid = EMAIL_RE.test(form.correo_juzgado.trim());
 
   const stepValid = [
@@ -194,17 +189,12 @@ function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProces
 
         {step === 2 && (
           <EditForm>
-            <EditSelect
+            <EditField
               label="Contraparte / Parte demandada *"
-              value={form.id_contraparte}
-              onChange={set('id_contraparte')}
-              options={[{ value: '', label: contrapartes.length ? 'Seleccione contraparte' : 'Cargando...' }, ...contraparteOptions]}
+              value={form.contraparte}
+              onChange={set('contraparte')}
+              placeholder="Nombre de la parte demandada (varía en cada caso)"
             />
-            {form.id_contraparte === NUEVA_CONTRAPARTE && (
-              <Reveal revealKey="contraparte-nueva">
-                <EditField label="Nombre de la nueva contraparte *" value={form._contraparteNueva} onChange={set('_contraparteNueva')} placeholder="Nombre de la parte demandada" />
-              </Reveal>
-            )}
             <EditField label="Juzgado / Autoridad que conoce" value={form.juzgado_o_autoridad_que_conoce} onChange={set('juzgado_o_autoridad_que_conoce')} placeholder="Juzgado 5 Laboral del Circuito de Bogotá" />
             <EditRow cols={2}>
               <EditField label="Correo del juzgado / entidad *" type="email" value={form.correo_juzgado} onChange={set('correo_juzgado')} placeholder="notificaciones@juzgado.gov.co" />
@@ -214,8 +204,8 @@ function ExpedienteWizard({ form, onChange, tiposProceso, combos, subtiposProces
               <div className="kf-wizard-summary-row"><dt>N° Expediente KOOP</dt><dd>{buildNumeroExpediente(form) || '—'}</dd></div>
               <div className="kf-wizard-summary-row"><dt>N° Radicado del despacho</dt><dd>{form.numero_radicado_despacho || '—'}</dd></div>
               <div className="kf-wizard-summary-row"><dt>Cliente</dt><dd>{nombreCliente || '—'}</dd></div>
-              <div className="kf-wizard-summary-row"><dt>Materia</dt><dd>{nombreTipoProceso || '—'}</dd></div>
-              <div className="kf-wizard-summary-row"><dt>Contraparte</dt><dd>{nombreContraparte || '—'}</dd></div>
+              <div className="kf-wizard-summary-row"><dt>Materia</dt><dd>{materiaCompleta || '—'}</dd></div>
+              <div className="kf-wizard-summary-row"><dt>Contraparte</dt><dd>{form.contraparte || '—'}</dd></div>
             </dl>
           </EditForm>
         )}
@@ -258,8 +248,7 @@ function expedienteToForm(exp, combos) {
     _secuenciaAuto: false,
     numero_radicado_despacho: exp.numero_radicado_despacho || '',
     id_cliente: exp.id_cliente != null ? String(exp.id_cliente) : '',
-    id_contraparte: exp.id_contraparte != null ? String(exp.id_contraparte) : '',
-    _contraparteNueva: '',
+    contraparte: exp.nombre_contraparte || '',
     juzgado_o_autoridad_que_conoce: exp.juzgado_o_autoridad_que_conoce || '',
     correo_juzgado: exp.correo_juzgado || '',
     direccion_juzgado: exp.direccion_juzgado || '',
@@ -269,23 +258,11 @@ function expedienteToForm(exp, combos) {
   };
 }
 
-// Si el usuario eligio "+ Agregar nueva contraparte..." en el paso 3, esa
-// contraparte todavia no existe en el catalogo — hay que crearla antes de poder
-// mandar su id en el payload del expediente.
-async function resolveContraparteId(form) {
-  if (form.id_contraparte === NUEVA_CONTRAPARTE) {
-    const nombre = form._contraparteNueva.trim();
-    if (!nombre) return undefined;
-    const created = await createContraparte({ nombre });
-    return created.id;
-  }
-  return form.id_contraparte ? Number(form.id_contraparte) : undefined;
-}
-
-async function formToPayload(form) {
+function formToPayload(form) {
   const payload = {
     numero_de_expediente: buildNumeroExpediente(form),
     numero_radicado_despacho: form.numero_radicado_despacho?.trim() || undefined,
+    contraparte: form.contraparte?.trim() || undefined,
     juzgado_o_autoridad_que_conoce: form.juzgado_o_autoridad_que_conoce || undefined,
     correo_juzgado: form.correo_juzgado?.trim() || undefined,
     direccion_juzgado: form.direccion_juzgado?.trim() || undefined,
@@ -294,7 +271,6 @@ async function formToPayload(form) {
   if (form.id_tipo_proc_subtipo_proc_tipo_pre) {
     payload.id_tipo_proc_subtipo_proc_tipo_pre = Number(form.id_tipo_proc_subtipo_proc_tipo_pre);
   }
-  payload.id_contraparte = await resolveContraparteId(form);
   return payload;
 }
 
@@ -322,7 +298,6 @@ export default function Expedientes() {
   const [subtiposProceso, setSubtiposProceso] = useState([]);
   const [tiposPretension, setTiposPretension] = useState([]);
   const [clientes, setClientes] = useState([]);
-  const [contrapartes, setContrapartes] = useState([]);
   const [q, setQ] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
@@ -344,28 +319,11 @@ export default function Expedientes() {
     listSubtiposProceso().then(setSubtiposProceso).catch(() => {});
     listTiposPretension().then(setTiposPretension).catch(() => {});
     listClientes().then((r) => setClientes(r.items || [])).catch(() => {});
-    listContraparte().then(setContrapartes).catch(() => {});
   }, []);
 
   const clienteNombre = useCallback(
     (idCliente) => clientes.find((c) => c.id === idCliente)?.nombre,
     [clientes]
-  );
-  // exp.nombre_contraparte viene del JOIN del listado (GET), pero create/update
-  // devuelven la fila cruda sin ese JOIN — se recarga la lista tras cada cambio
-  // (mismo patron que Tareas/Kanban) para no dejar "Contraparte" en blanco hasta
-  // el proximo refresh manual.
-  const contraparteNombre = useCallback(
-    (exp) => exp.nombre_contraparte || contrapartes.find((c) => c.id === exp.id_contraparte)?.nombre,
-    [contrapartes]
-  );
-  const tipoProcesoNombre = useCallback(
-    (exp) => {
-      const combo = combos.find((c) => c.id === exp.id_tipo_proc_subtipo_proc_tipo_pre);
-      if (!combo) return null;
-      return tiposProceso.find((t) => t.id === combo.id_tipo_proceso)?.nombre;
-    },
-    [combos, tiposProceso]
   );
 
   const onSearchChange = (e) => {
@@ -421,8 +379,7 @@ export default function Expedientes() {
 
   const validateForm = () => {
     if (!buildNumeroExpediente(form) || !form.id_cliente) { showMsg('Año, secuencia y cliente son obligatorios', 'danger'); return false; }
-    const contraparteOk = form.id_contraparte === NUEVA_CONTRAPARTE ? !!form._contraparteNueva.trim() : !!form.id_contraparte;
-    if (!contraparteOk) { showMsg('La contraparte (parte demandada) es obligatoria', 'danger'); return false; }
+    if (!form.contraparte.trim()) { showMsg('La contraparte (parte demandada) es obligatoria', 'danger'); return false; }
     if (!EMAIL_RE.test(form.correo_juzgado.trim())) { showMsg('El correo del juzgado/entidad es obligatorio y debe ser válido', 'danger'); return false; }
     return true;
   };
@@ -430,8 +387,8 @@ export default function Expedientes() {
   const handleCreate = async () => {
     if (!validateForm()) return;
     try {
-      await createExpediente(await formToPayload(form));
-      await Promise.all([doFetch(q, currentPage), listContraparte().then(setContrapartes)]);
+      await createExpediente(formToPayload(form));
+      await doFetch(q, currentPage);
       setShowCreate(false);
       showMsg('Expediente creado exitosamente');
     } catch (e) {
@@ -442,8 +399,8 @@ export default function Expedientes() {
   const handleEdit = async () => {
     if (!validateForm()) return;
     try {
-      await updateExpediente(editTarget.id, await formToPayload(form));
-      await Promise.all([doFetch(q, currentPage), listContraparte().then(setContrapartes)]);
+      await updateExpediente(editTarget.id, formToPayload(form));
+      await doFetch(q, currentPage);
       setShowEdit(false);
       showMsg('Expediente actualizado');
     } catch (e) {
@@ -531,9 +488,8 @@ export default function Expedientes() {
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 20 }}>
                 {expedientes.map((exp) => {
-                  const nombreTipoProceso = tipoProcesoNombre(exp);
                   const nombreCliente = clienteNombre(exp.id_cliente);
-                  const nombreContraparte = contraparteNombre(exp);
+                  const materia = [exp.nombre_subtipo_proceso, exp.nombre_tipo_pretension].filter(Boolean).join(' — ');
                   return (
                     <div
                       key={exp.id}
@@ -547,9 +503,9 @@ export default function Expedientes() {
                           <span style={{ fontSize: 12, padding: '3px 8px', borderRadius: 10, background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.3)', fontWeight: 600 }}>
                             {exp.numero_de_expediente || 'SIN N°'}
                           </span>
-                          {nombreTipoProceso && (
+                          {exp.nombre_tipo_proceso && (
                             <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 10, background: 'rgba(79,209,197,0.1)', color: '#67e8f9', border: '1px solid rgba(79,209,197,0.2)' }}>
-                              {nombreTipoProceso}
+                              {exp.nombre_tipo_proceso}
                             </span>
                           )}
                           <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 10, background: `${estadoProcesoColor(exp.nombre_estado_proceso)}22`, color: estadoProcesoColor(exp.nombre_estado_proceso), border: `1px solid ${estadoProcesoColor(exp.nombre_estado_proceso)}44`, fontWeight: 600 }}>
@@ -560,6 +516,21 @@ export default function Expedientes() {
                       </div>
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+                        {materia && (
+                          <div style={{ fontSize: 13, color: '#9fb3cc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={materia}>
+                            <span style={{ color: '#64748b' }}>Materia:</span> <span style={{ color: '#cbd5e1' }}>{materia}</span>
+                          </div>
+                        )}
+                        {exp.calidad_usuario && (
+                          <div style={{ fontSize: 13, color: '#9fb3cc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
+                            <span style={{ color: '#64748b' }}>Calidad:</span> <span style={{ color: '#cbd5e1' }}>{exp.calidad_usuario}</span>
+                          </div>
+                        )}
+                        {exp.nombre_contraparte && (
+                          <div style={{ fontSize: 13, color: '#9fb3cc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={exp.nombre_contraparte}>
+                            <span style={{ color: '#64748b' }}>Contraparte:</span> <span style={{ color: '#cbd5e1' }}>{exp.nombre_contraparte}</span>
+                          </div>
+                        )}
                         {exp.numero_radicado_despacho && (
                           <div style={{ fontSize: 13, color: '#9fb3cc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={exp.numero_radicado_despacho}>
                             <span style={{ color: '#64748b' }}>Radicado despacho:</span> <span style={{ color: '#cbd5e1' }}>{exp.numero_radicado_despacho}</span>
@@ -568,11 +539,6 @@ export default function Expedientes() {
                         {exp.juzgado_o_autoridad_que_conoce && (
                           <div style={{ fontSize: 13, color: '#9fb3cc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={exp.juzgado_o_autoridad_que_conoce}>
                             <span style={{ color: '#64748b' }}>Juzgado:</span> <span style={{ color: '#cbd5e1' }}>{exp.juzgado_o_autoridad_que_conoce}</span>
-                          </div>
-                        )}
-                        {nombreContraparte && (
-                          <div style={{ fontSize: 13, color: '#9fb3cc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={nombreContraparte}>
-                            <span style={{ color: '#64748b' }}>Contraparte:</span> <span style={{ color: '#cbd5e1' }}>{nombreContraparte}</span>
                           </div>
                         )}
                       </div>
@@ -609,7 +575,7 @@ export default function Expedientes() {
       <Modal show={showCreate} onClose={() => setShowCreate(false)} title="➕ Nuevo Expediente">
         <ExpedienteWizard
           form={form} onChange={setForm}
-          tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes} contrapartes={contrapartes}
+          tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes}
           onAnioChange={suggestNextSecuencia}
           onSubmit={handleCreate} onCancel={() => setShowCreate(false)} submitLabel="Crear expediente" submitting={loading}
         />
@@ -618,7 +584,7 @@ export default function Expedientes() {
       <Modal show={showEdit && !!editTarget} onClose={() => setShowEdit(false)} title="✏️ Editar Expediente">
         <ExpedienteWizard
           form={form} onChange={setForm}
-          tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes} contrapartes={contrapartes}
+          tiposProceso={tiposProceso} combos={combos} subtiposProceso={subtiposProceso} tiposPretension={tiposPretension} clientes={clientes}
           onAnioChange={suggestNextSecuencia}
           onSubmit={handleEdit} onCancel={() => setShowEdit(false)} submitLabel="Guardar cambios" submitting={loading}
           startMaxReached={WIZARD_STEPS.length - 1}
