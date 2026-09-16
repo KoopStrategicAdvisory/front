@@ -1,7 +1,10 @@
-﻿import { useAdminTasks } from '../../../hooks/useAdminTasks';
+﻿import { useState } from 'react';
+import { useAdminTasks } from '../../../hooks/useAdminTasks';
 import '../../../styles/dashboard.css';
 import '../../../styles/mi-expediente.css';
 import { TaskFormFields } from '../../../components/common/TaskFormFields';
+import KanbanBoard from '../../../components/kanban/KanbanBoard';
+import { estadoTareaColor } from '../../../constants/estadoTareaColor';
 
 function getUserInfo(userId, admins) {
   const admin = admins.find((adminItem) => String(adminItem.id) === String(userId));
@@ -27,6 +30,7 @@ function isOverdue(iso) {
 
 export default function AdminTareas() {
   const {
+    user,
     isAdmin,
     canAccess,
     admins,
@@ -64,9 +68,18 @@ export default function AdminTareas() {
     handleDeleteTask,
     handleStatusChange,
     resetForm,
+    notifySuccess,
+    notifyError,
     setShowSuccessNotice,
     setShowErrorNotice,
   } = useAdminTasks();
+
+  // El tablero Kanban vivia en una pagina aparte (/admin/kanban), desconectada
+  // de esta lista — mismo dato (tareas), dos pantallas distintas sin relacion
+  // visible entre si. Ahora es un modo de vista de la misma pantalla, como
+  // Lista/Tablero en Asana: mismo boton "Nueva Tarea", mismo panel de detalle,
+  // solo cambia como se muestran las tareas.
+  const [view, setView] = useState('list');
 
   if (!canAccess) {
     return (
@@ -147,6 +160,23 @@ export default function AdminTareas() {
           </div>
         </div>
 
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', background: '#1e2a3a', border: '1px solid #394b61', borderRadius: '10px', padding: '4px', width: 'fit-content' }}>
+          <button
+            onClick={() => setView('list')}
+            style={{ fontSize: '13px', padding: '8px 18px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontWeight: 600, background: view === 'list' ? '#6366f1' : 'transparent', color: view === 'list' ? 'white' : '#9fb3cc' }}
+          >
+            📋 Lista
+          </button>
+          <button
+            onClick={() => setView('board')}
+            style={{ fontSize: '13px', padding: '8px 18px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontWeight: 600, background: view === 'board' ? '#6366f1' : 'transparent', color: view === 'board' ? 'white' : '#9fb3cc' }}
+          >
+            🗂️ Tablero
+          </button>
+        </div>
+
+        {view === 'list' && (
+        <>
         <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ flex: '1', minWidth: '300px' }}>
             <input
@@ -220,12 +250,14 @@ export default function AdminTareas() {
                 {filteredTasks.map((t) => {
                   const u = getUserInfo(t.assignee, admins);
                   const statusTxt = t.status === 'hecho' ? 'Hecho' : 'Pendiente';
+                  const estadoColor = estadoTareaColor(t.estadoNombre);
                   return (
                     <div
                       key={t.id}
                       style={{
                         background: 'linear-gradient(135deg, #2a3a51, #1e2a3a)',
                         border: '1px solid #394b61',
+                        borderLeft: `3px solid ${estadoColor}`,
                         borderRadius: '12px',
                         padding: '20px',
                         transition: 'all 0.2s ease',
@@ -258,7 +290,7 @@ export default function AdminTareas() {
                             {t.prioridadNombre.toUpperCase()}
                           </span>
                         )}
-                        <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', background: t.status === 'hecho' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(156, 163, 175, 0.15)', color: t.status === 'hecho' ? '#bbf7d0' : '#d1d5db', border: `1px solid ${t.status === 'hecho' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(156, 163, 175, 0.3)'}` }}>
+                        <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', fontWeight: 600, background: `${estadoColor}22`, color: estadoColor, border: `1px solid ${estadoColor}44` }}>
                           {t.estadoNombre || statusTxt}
                         </span>
                         <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', background: isOverdue(t.due) ? 'rgba(239, 68, 68, 0.15)' : 'rgba(79, 209, 197, 0.15)', color: isOverdue(t.due) ? '#fecaca' : '#67e8f9', border: `1px solid ${isOverdue(t.due) ? 'rgba(239, 68, 68, 0.3)' : 'rgba(79, 209, 197, 0.3)'}` }}>
@@ -311,6 +343,21 @@ export default function AdminTareas() {
             )}
           </div>
         </div>
+        </>
+        )}
+
+        {view === 'board' && (
+          <KanbanBoard
+            canManage={canAccess}
+            admins={admins}
+            expedientes={expedientes}
+            estadosCatalog={estados}
+            user={user}
+            openEditModal={openEditModal}
+            notifySuccess={notifySuccess}
+            notifyError={notifyError}
+          />
+        )}
       </div>
 
       {showSuccessNotice && (

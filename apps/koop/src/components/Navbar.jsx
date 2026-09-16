@@ -118,8 +118,7 @@ export default function Navbar() {
                       lista sin línea de tiempo, redundante con "Mis casos"). */}
                   {(isAdmin || isLawyer) && <Link to="/mi-expediente">Mis expedientes</Link>}
                   {(isAdmin || isLawyer) && <Link to="/admin/expedientes">Expedientes</Link>}
-                  {(isAdmin || isLawyer) && <Link to="/admin/kanban">Kanban</Link>}
-                  {isAdmin && <Link to="/admin/tareas">Tareas</Link>}
+                  {(isAdmin || isLawyer) && <Link to="/admin/tareas">Tareas</Link>}
                   {(isAdmin || isLawyer) && <Link to="/consultas">Consultas</Link>}
                   {!isAdmin && !isLawyer && <Link to="/mis-casos">Mis casos</Link>}
                   {isAdmin && <Link to="/admin/usuarios">Administrar</Link>}

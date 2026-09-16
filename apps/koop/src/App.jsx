@@ -40,7 +40,6 @@ import SpotifyCallback from './pages/dinamic/SpotifyCallback/index.jsx';
 import Consultas from './pages/dinamic/Consultas/index.jsx';
 import Expedientes from './pages/dinamic/Expedientes/index.jsx';
 import ExpedienteDetalle from './pages/dinamic/ExpedienteDetalle/index.jsx';
-import KanbanPage from './pages/dinamic/Kanban/index.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import RequireRole from './components/RequireRole.jsx';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -210,14 +209,9 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/admin/kanban"
-            element={
-              <AdminLawyerRoute>
-                <KanbanPage />
-              </AdminLawyerRoute>
-            }
-          />
+          {/* El tablero Kanban se fusiono a /admin/tareas como vista "Tablero" —
+              se mantiene esta ruta para no romper enlaces guardados. */}
+          <Route path="/admin/kanban" element={<Navigate to="/admin/tareas" replace />} />
           {/* Legacy .html paths -> redirect to SPA routes */}
           <Route path="/index.html" element={<Navigate to="/" replace />} />
           <Route path="/derecho.html" element={<Navigate to="/derecho" replace />} />
