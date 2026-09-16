@@ -1,24 +1,29 @@
 import api from './axios';
 
-export async function listConsultationLogs(date) {
-  const query = date ? `?date=${encodeURIComponent(date)}` : '';
-  const { data } = await api.get(`/admin/consultas${query}`);
+// Bitácora de consultas externas diarias — reconstruida sobre
+// /api/consultas-externas (el /api/admin/consultas viejo nunca llegó a
+// existir en el backend real, dependía de un modelo mongoose muerto).
+
+export async function listRadicadosActivos(fecha) {
+  const query = fecha ? `?fecha=${encodeURIComponent(fecha)}` : '';
+  const { data } = await api.get(`/consultas-externas/radicados${query}`);
+  return data;
+}
+
+export async function listConsultationLogs(fecha) {
+  const query = fecha ? `?fecha=${encodeURIComponent(fecha)}` : '';
+  const { data } = await api.get(`/consultas-externas${query}`);
   return data;
 }
 
 export async function createConsultationLog(payload) {
-  const { data } = await api.post('/admin/consultas', payload);
+  const { data } = await api.post('/consultas-externas', payload);
   return data;
 }
 
-export async function downloadConsultationPdf(date) {
-  const { data } = await api.get(`/admin/consultas/pdf${date ? `?date=${encodeURIComponent(date)}` : ''}`, {
+export async function downloadConsultationPdf(fecha) {
+  const { data } = await api.get(`/consultas-externas/pdf${fecha ? `?fecha=${encodeURIComponent(fecha)}` : ''}`, {
     responseType: 'blob',
   });
-  return data;
-}
-
-export async function listAllRadicados() {
-  const { data } = await api.get('/admin/consultas/radicados');
   return data;
 }

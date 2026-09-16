@@ -275,6 +275,68 @@
   color: #241a04;
 }
 
+/* Acceso rapido "grande" — para las 3-5 acciones mas importantes del
+   dashboard (expedientes, tareas, clientes, consultas diarias). Mas grande
+   y con mas contraste que .koop-tile a proposito: son los botones que mas
+   se usan en el dia a dia y deben ser imposibles de pasar por alto. */
+.koop-tile-lg {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 22px 16px;
+  border-radius: var(--r-lg);
+  background: linear-gradient(160deg, var(--surface-4) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 15px;
+  text-align: center;
+  min-height: 110px;
+  transition: transform var(--dur-fast) var(--ease-snap), border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease);
+}
+.koop-tile-lg:hover {
+  border-color: var(--accent-gold);
+  box-shadow: var(--shadow-gold);
+  transform: translateY(-3px);
+}
+.koop-tile-lg-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  background: linear-gradient(135deg, rgba(79,209,197,0.18), rgba(99,102,241,0.14));
+  border: 1px solid rgba(79,209,197,0.24);
+}
+.koop-tile-lg-label { line-height: 1.25; }
+.koop-tile-lg-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent-gold-soft), var(--accent-gold));
+  color: #241a04;
+  font-size: 12px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (max-width: 600px) {
+  .koop-tile-lg { padding: 16px 10px; min-height: 92px; }
+  .koop-tile-lg-icon { width: 40px; height: 40px; font-size: 19px; }
+  .koop-tile-lg-label { font-size: 13.5px; }
+}
+
 /* Mobile tweaks */
 @media (max-width: 600px) {
   .dash-card { padding: 18px; border-radius: var(--r-lg); }

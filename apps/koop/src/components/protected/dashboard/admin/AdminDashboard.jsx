@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../../../../api/axios";
 import { listClientes } from "../../../../api/clientes";
+import { listNotificacionesProximasVencer } from "../../../../api/notificaciones";
 import { useAuth } from "../../../../context/AuthContext";
 import useCalendarEvents from "../../../../hooks/useCalendarEvents";
 import { normalizeUpperAscii } from "../../../../utils/strings.js";
@@ -34,8 +35,10 @@ export default function AdminDashboard() {
   const displayName = normalizeUpperAscii(user?.name || "Dashboard");
   const [kpis, setKpis] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [docsRefreshKey, setDocsRefreshKey] = useState(0);
+
+  const [alertas, setAlertas] = useState([]);
+  const [alertasLoading, setAlertasLoading] = useState(true);
 
   const [calendarEvents, setCalendarEvents] = useCalendarEvents();
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -61,9 +64,25 @@ export default function AdminDashboard() {
         const { data } = await api.get("/kpis/overview");
         setKpis(data);
       } catch (e) {
-        setError(e?.response?.data || e?.message);
+        // El endpoint de KPIs todavia no existe en el backend nuevo (quedo
+        // pendiente de reconstruir, igual que paso con Consultas) — no tiene
+        // caso mostrarle al usuario un volcado crudo de un 404.
       } finally {
         setLoading(false);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setAlertasLoading(true);
+        const items = await listNotificacionesProximasVencer(10);
+        setAlertas(Array.isArray(items) ? items : []);
+      } catch (e) {
+        setAlertas([]);
+      } finally {
+        setAlertasLoading(false);
       }
     })();
   }, []);
@@ -173,10 +192,15 @@ export default function AdminDashboard() {
     setIsComposeOpen(false);
   };
 
+  // Orden pensado segun lo mas importante del dia a dia: expedientes,
+  // tareas pendientes (con su contador), clientes, y la revision diaria
+  // de consultas externas — no es un orden definitivo/quemado, se puede
+  // seguir ajustando segun lo que realmente se use mas.
   const adminPrimaryActions = [
+    { key: 'expedientes', label: 'Expedientes', to: '/admin/expedientes', icon: '📁' },
+    { key: 'tareas', label: 'Tareas', to: '/admin/tareas', icon: '✅', badge: tasksCount },
     { key: 'clientes', label: 'Clientes', to: '/admin/clientes-activos', icon: '👥' },
-    { key: 'procesos', label: 'Procesos', to: '/mis-casos', icon: '⚖️' },
-    { key: 'publicaciones', label: 'Publicaciones Procesales', href: 'https://koop.com/publicaciones-procesales', icon: '📰' },
+    { key: 'consultas', label: 'Consultas diarias', to: '/consultas', icon: '🔎' },
   ];
 
   const selectedDateLabel = useMemo(
@@ -291,19 +315,18 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          <Link className="koop-stat-pill" to="/admin/tareas" title="Ver y gestionar tareas">
-            <span className="koop-stat-pill-icon" aria-hidden="true">✅</span>
-            <span>Tareas <strong>({tasksCount})</strong></span>
-          </Link>
-          <Link className="koop-stat-pill" to="/admin/clientes-activos" title="Clientes">
-            <span className="koop-stat-pill-icon" aria-hidden="true">👥</span>
-            <span>Clientes</span>
-          </Link>
-          <Link className="koop-stat-pill koop-stat-pill--gold" to="/consultas" title="Acceder a consultas">
-            <span className="koop-stat-pill-icon" aria-hidden="true">💬</span>
-            <span>Consultas</span>
-          </Link>
+        {/* Accesos rápidos: lo más importante del día a día, en grande y
+            visible — expedientes, tareas, clientes y la revisión diaria. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+          {adminPrimaryActions.map((action) => (
+            <Link key={action.key} className="koop-tile-lg" to={action.to} title={action.label}>
+              <span className="koop-tile-lg-icon" aria-hidden="true">{action.icon}</span>
+              <span className="koop-tile-lg-label">{action.label}</span>
+              {action.badge != null && action.badge > 0 && (
+                <span className="koop-tile-lg-badge">{action.badge}</span>
+              )}
+            </Link>
+          ))}
         </div>
 
         <div className="admin-main-grid" style={{ marginTop: 16 }}>
@@ -320,9 +343,6 @@ export default function AdminDashboard() {
                 <Link className="btn btn-primary btn-sm" to="/admin/usuarios" title="Administrar usuarios">
                   Administrar usuarios
                 </Link>
-                <Link className="btn btn-secondary btn-sm" to="/mi-expediente" title="Revisar expedientes">
-                  Revisar expedientes
-                </Link>
               </div>
             </div>
 
@@ -331,34 +351,56 @@ export default function AdminDashboard() {
               onChange={handleCalendarChange}
               events={calendarEvents}
             />
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
-              {adminPrimaryActions.map((action) => (
-                action.to ? (
-                  <Link key={action.key} className="koop-tile" to={action.to}>
-                    <span className="koop-tile-icon" aria-hidden="true">{action.icon}</span>
-                    {action.label}
-                  </Link>
-                ) : (
-                  <button
-                    key={action.key}
-                    type="button"
-                    className="koop-tile"
-                    onClick={() => {
-                      if (typeof window !== 'undefined' && action.href) {
-                        window.open(action.href, '_blank', 'noopener');
-                      }
-                    }}
-                  >
-                    <span className="koop-tile-icon" aria-hidden="true">{action.icon}</span>
-                    {action.label}
-                  </button>
-                )
-              ))}
-            </div>
           </div>
 
           <div className="admin-main-right">
+            <div className="dash-item">
+              <div className="koop-section-head" style={{ justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span className="koop-section-icon" aria-hidden="true" style={{ background: 'linear-gradient(135deg, rgba(240,185,66,0.22), rgba(239,68,68,0.14))', borderColor: 'rgba(240,185,66,0.3)' }}>🔔</span>
+                  <span className="koop-section-title">Alertas de vencimiento</span>
+                </div>
+                {alertas.length > 0 && (
+                  <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: 'rgba(239,68,68,0.14)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)' }}>
+                    {alertas.length}
+                  </span>
+                )}
+              </div>
+              {alertasLoading ? (
+                <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Cargando alertas...</div>
+              ) : alertas.length === 0 ? (
+                <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Sin términos próximos a vencer. 🎉</div>
+              ) : (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {alertas.slice(0, 6).map((n) => {
+                    const dias = n.fecha_vencimiento
+                      ? Math.ceil((new Date(n.fecha_vencimiento) - new Date()) / 86400000)
+                      : null;
+                    const urgent = dias != null && dias <= 2;
+                    return (
+                      <Link
+                        key={n.id}
+                        to={n.id_expediente ? `/admin/expedientes/${n.id_expediente}` : '#'}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center',
+                          padding: '9px 12px', borderRadius: 10, textDecoration: 'none',
+                          background: urgent ? 'rgba(239,68,68,0.06)' : 'rgba(148,163,184,0.05)',
+                          border: `1px solid ${urgent ? 'rgba(239,68,68,0.22)' : 'var(--border-subtle)'}`,
+                        }}
+                      >
+                        <span style={{ fontSize: 13, color: 'var(--text-primary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {n.objeto_notificacion || n.nombre_tipo_notificacion || 'Notificación'}
+                        </span>
+                        <span style={{ fontSize: 11.5, fontWeight: 700, color: urgent ? '#fca5a5' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                          {dias != null ? (dias <= 0 ? 'Vence hoy' : `${dias} día${dias === 1 ? '' : 's'}`) : ''}
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <AiChat
               title="Asistente IA"
               systemPrompt={"Eres un asistente interno de Koop Strategic Advisory. Responde de forma breve, clara y profesional."}
@@ -524,21 +566,6 @@ export default function AdminDashboard() {
         <div style={{ marginTop: 16 }}>
           <RecentDocuments refreshKey={docsRefreshKey} />
         </div>
-
-        {error && (
-          <pre
-            className="text-red-600 text-sm mt-2"
-            style={{
-              color: "#fecaca",
-              background: "#7f1d1d",
-              padding: 12,
-              borderRadius: 8,
-              marginTop: 12,
-            }}
-          >
-            {typeof error === "string" ? error : JSON.stringify(error, null, 2)}
-          </pre>
-        )}
       </div>
       {isComposeOpen && (
         <div className="compose-overlay" role="dialog" aria-modal="true">
