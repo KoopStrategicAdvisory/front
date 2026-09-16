@@ -80,7 +80,7 @@ function CreateClientModal({ onClose, onSubmit }) {
         telefono: form.telefono.trim() || undefined,
       });
     } catch (e) {
-      setError(e?.message || 'Error al crear el cliente');
+      setError(e?.response?.data?.message || e?.message || 'Error al crear el cliente');
     } finally {
       setSaving(false);
     }
@@ -221,13 +221,14 @@ export default function ClientesActivos() {
     try {
       await updateCliente(editing.id, {
         nombre: String(editing.nombre ?? '').trim(),
+        email: String(editing.email ?? '').trim() || undefined,
         numero_documento: String(editing.numero_documento ?? '').trim() || undefined,
         telefono: String(editing.telefono ?? '').trim() || undefined,
       });
       setEditing(null);
       showNotice('Cliente actualizado correctamente');
     } catch (e) {
-      showNotice(e?.message || 'No se pudo guardar', 'danger');
+      showNotice(e?.response?.data?.message || e?.message || 'No se pudo guardar', 'danger');
     } finally {
       setSaving(false);
     }
@@ -242,7 +243,7 @@ export default function ClientesActivos() {
       setConfirmDeleteClient(null);
       showNotice('Cliente eliminado correctamente', 'danger');
     } catch (e) {
-      setDeleteError(e?.message || 'No se pudo eliminar el cliente');
+      setDeleteError(e?.response?.data?.message || e?.message || 'No se pudo eliminar el cliente');
     } finally {
       setDeleting(false);
     }
@@ -443,7 +444,7 @@ export default function ClientesActivos() {
             <div className="dash-item">
               <EditForm>
                 <EditField label="Nombre" value={editing.nombre} onChange={(e) => setEditing((p) => ({ ...p, nombre: e.target.value }))} />
-                <EditField label="Email" type="email" value={editing.email} onChange={() => {}} inputProps={{ readOnly: true }} />
+                <EditField label="Email" type="email" value={editing.email} onChange={(e) => setEditing((p) => ({ ...p, email: e.target.value }))} />
                 <EditRow cols={2}>
                   <EditField label="Documento" value={editing.numero_documento} onChange={(e) => setEditing((p) => ({ ...p, numero_documento: e.target.value }))} />
                   <EditField label="Celular" value={editing.telefono} onChange={(e) => setEditing((p) => ({ ...p, telefono: e.target.value }))} />
