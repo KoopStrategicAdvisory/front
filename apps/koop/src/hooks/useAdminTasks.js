@@ -22,7 +22,9 @@ function normalizeRoles(value) {
 }
 
 // Mapea la tarea del backend al shape plano que usa la UI de AdminTareas.
-function toTask(tarea) {
+// Exportada para que Kanban pueda abrir el mismo panel de edicion desde una
+// tarjeta, sin duplicar este mapeo.
+export function toTask(tarea) {
   return {
     id: tarea.id,
     title: tarea.titulo ?? '',

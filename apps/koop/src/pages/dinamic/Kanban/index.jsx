@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useKanban } from '../../../hooks/useKanban';
+import { useAdminTasks, toTask } from '../../../hooks/useAdminTasks';
 import { useAccess } from '../../../context/AccessContext';
 import { listTableros, createTablero as apiCreateTablero, createColumna } from '../../../api/kanban';
 import { listTareas, updateTarea } from '../../../api/tareas';
-import { listEstadosTarea } from '../../../api/catalogos';
+import { TaskFormFields } from '../../../components/common/TaskFormFields';
 import '../../../styles/dashboard.css';
 import '../../../styles/mi-expediente.css';
 
@@ -53,23 +54,28 @@ function useDnD(onCardDrop) {
 }
 
 // ─── Card component ───────────────────────────────────────────────────────────
-function KanbanCard({ pos, tarea, onDragStart }) {
+// Clic (sin arrastrar) abre el panel de detalle de la tarea — igual que en
+// Trello/Linear/Asana, donde una tarjeta es tambien un botón hacia el detalle
+// completo, no solo un objeto para arrastrar.
+function KanbanCard({ pos, tarea, onDragStart, onCardClick }) {
   const titulo = tarea?.titulo || pos.titulo_tarea || `Tarea #${pos.id_tarea}`;
   const estado = tarea?.nombre_estado_tarea || '';
   const limite = tarea?.fecha_limite;
 
   const isOverdue = limite && new Date(limite) < new Date() && !/completad/i.test(estado);
+  const isTarea = pos.tipo_entidad === 'tarea';
 
   return (
     <div
-      draggable={pos.tipo_entidad === 'tarea'}
+      draggable={isTarea}
       onDragStart={(e) => onDragStart(e, pos)}
+      onClick={() => isTarea && tarea && onCardClick(tarea)}
       style={{
         background: 'linear-gradient(135deg, #283447, #1c2c3e)',
         border: `1px solid ${isOverdue ? 'rgba(239,68,68,0.4)' : borderCol}`,
         borderRadius: 8,
         padding: '10px 12px',
-        cursor: pos.tipo_entidad === 'tarea' ? 'grab' : 'default',
+        cursor: isTarea ? 'pointer' : 'default',
         userSelect: 'none',
         marginBottom: 8,
         transition: 'box-shadow 0.15s',
@@ -95,7 +101,7 @@ function KanbanCard({ pos, tarea, onDragStart }) {
 }
 
 // ─── Column component ─────────────────────────────────────────────────────────
-function KanbanColumn({ columna, cards, tareasById, onDragStart, onDragOver, onDrop }) {
+function KanbanColumn({ columna, cards, tareasById, onDragStart, onDragOver, onDrop, onCardClick }) {
   const wipExceeded = columna.wip_limit && cards.length > columna.wip_limit;
   return (
     <div
@@ -145,7 +151,7 @@ function KanbanColumn({ columna, cards, tareasById, onDragStart, onDragOver, onD
           cards
             .sort((a, b) => (a.orden_vertical ?? 0) - (b.orden_vertical ?? 0))
             .map((pos) => (
-              <KanbanCard key={pos.id} pos={pos} tarea={tareasById[pos.id_tarea]} onDragStart={onDragStart} />
+              <KanbanCard key={pos.id} pos={pos} tarea={tareasById[pos.id_tarea]} onDragStart={onDragStart} onCardClick={onCardClick} />
             ))
         )}
       </div>
@@ -229,18 +235,50 @@ export default function KanbanPage() {
 
   const { tablero, columnas, posiciones, loading, error, loadTablero, getTarjetasPorColumna, moverTarea } = useKanban();
 
+  // Mismo hook que /admin/tareas: catalogos (admins/expedientes/estados/prioridades)
+  // y el panel de edicion completo, para no duplicar ese formulario aqui — hacer
+  // clic en una tarjeta abre el mismo panel que "✏️" en la lista de Tareas.
+  const {
+    user, admins, expedientes, estados: estadosCatalog, prioridades,
+    showEditModal, formData, setFormData, openEditModal, closeEditModal, handleEditTask,
+    showSuccessNotice, showErrorNotice, noticeMessage, setShowSuccessNotice, setShowErrorNotice,
+  } = useAdminTasks();
+
   const [tableroId, setTableroId] = useState('');
   const [showCreateTablero, setShowCreateTablero] = useState(false);
   const [tableroListKey, setTableroListKey] = useState(0);
   const [tareasById, setTareasById] = useState({});
-  const [estadosCatalog, setEstadosCatalog] = useState([]);
-
-  useEffect(() => { listEstadosTarea().then(setEstadosCatalog).catch(() => {}); }, []);
 
   const onSelectTablero = (id) => {
     setTableroId(id);
     if (id) loadTablero(id);
   };
+
+  // "Mis tareas": un tablero personal por usuario, creado la primera vez que
+  // entra, que arranca ya con una columna por estado real — asi el Kanban
+  // se ve poblado desde el primer momento en vez de exigir crear un tablero
+  // "de la firma" a mano antes de poder usarlo. No pisa una seleccion manual
+  // (solo corre mientras tableroId sigue vacio).
+  useEffect(() => {
+    if (tableroId || !user?.id || estadosCatalog.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await listTableros();
+        const propios = res.items ?? [];
+        let personal = propios.find((t) => t.tipo_ambito === 'personal' && String(t.id_usuario_propietario) === String(user.id));
+        if (!personal) {
+          personal = await apiCreateTablero({ nombre: 'Mis tareas', tipo_ambito: 'personal' });
+          await Promise.all(estadosCatalog.map((e, i) => createColumna(personal.id, { nombre: e.nombre, orden: i })));
+          if (cancelled) return;
+          setTableroListKey((k) => k + 1);
+        }
+        if (!cancelled) onSelectTablero(String(personal.id));
+      } catch { /* si falla, el usuario igual puede elegir un tablero a mano */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, estadosCatalog, tableroId]);
 
   // Las posiciones del tablero solo traen el id de la tarea (y, de regalo, su
   // titulo via JOIN) — para mostrar estado y fecha limite en cada tarjeta hay
@@ -278,26 +316,44 @@ export default function KanbanPage() {
     } catch { /* moverTarea ya deja su propio error en el hook */ }
   }, [moverTarea, columnas, estadosCatalog, refreshTareas]);
 
+  const esTableroPersonalPropio = tablero?.tipo_ambito === 'personal' && String(tablero?.id_usuario_propietario) === String(user?.id);
+
   // Reconciliacion: si el estado real de una tarea cambio por fuera del Kanban
   // (por ejemplo, editandola en /admin/tareas), la tarjeta se reubica sola en
   // la columna que le corresponde la proxima vez que se carga el tablero, en
-  // vez de quedarse "mintiendo" en la columna vieja indefinidamente.
+  // vez de quedarse "mintiendo" en la columna vieja indefinidamente. Ademas,
+  // en el tablero personal de cada quien, cualquier tarea asignada a esa
+  // persona que todavia no tenga tarjeta se agrega sola — asi "Mis tareas" se
+  // mantiene poblado sin que nadie tenga que arrastrar nada a mano cuando se
+  // crea o reasigna una tarea.
   useEffect(() => {
     if (!tablero || columnas.length === 0 || Object.keys(tareasById).length === 0) return;
+
+    const columnaPara = (tarea) => columnas.find((c) => {
+      const estadoColumna = estadoIdForColumna(c, estadosCatalog);
+      return estadoColumna != null && String(estadoColumna) === String(tarea.id_estado_tarea);
+    });
+
     posiciones
       .filter((p) => p.tipo_entidad === 'tarea' && tareasById[p.id_tarea])
       .forEach((p) => {
-        const tarea = tareasById[p.id_tarea];
-        const columnaCorrecta = columnas.find((c) => {
-          const estadoColumna = estadoIdForColumna(c, estadosCatalog);
-          return estadoColumna != null && String(estadoColumna) === String(tarea.id_estado_tarea);
-        });
+        const columnaCorrecta = columnaPara(tareasById[p.id_tarea]);
         if (columnaCorrecta && String(columnaCorrecta.id) !== String(p.id_columna)) {
           moverTarea(p.id_tarea, columnaCorrecta.id).catch(() => {});
         }
       });
+
+    if (esTableroPersonalPropio) {
+      const posicionadas = new Set(posiciones.filter((p) => p.tipo_entidad === 'tarea').map((p) => String(p.id_tarea)));
+      Object.values(tareasById)
+        .filter((t) => String(t.id_usuario_asignado) === String(user.id) && !posicionadas.has(String(t.id)))
+        .forEach((t) => {
+          const columnaCorrecta = columnaPara(t);
+          if (columnaCorrecta) moverTarea(t.id, columnaCorrecta.id).catch(() => {});
+        });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tablero, columnas, tareasById, estadosCatalog, posiciones]);
+  }, [tablero, columnas, tareasById, estadosCatalog, posiciones, esTableroPersonalPropio]);
 
   // Un tablero recien creado no trae columnas — antes eso dejaba el board
   // permanentemente vacio (no habia ningun botón para agregar columnas). Se
@@ -305,13 +361,19 @@ export default function KanbanPage() {
   // del catalogo, para que quede utilizable de inmediato.
   const onTableroCreated = async (t) => {
     try {
-      const estados = await listEstadosTarea();
-      await Promise.all(estados.map((estado, i) => createColumna(t.id, { nombre: estado.nombre, orden: i })));
+      await Promise.all(estadosCatalog.map((estado, i) => createColumna(t.id, { nombre: estado.nombre, orden: i })));
     } catch { /* el tablero queda creado igual; se pueden agregar columnas despues */ }
     setShowCreateTablero(false);
     setTableroListKey((k) => k + 1);
     onSelectTablero(String(t.id));
   };
+
+  const onCardClick = useCallback((tareaRaw) => { openEditModal(toTask(tareaRaw)); }, [openEditModal]);
+
+  const handleEditAndSync = useCallback(async () => {
+    await handleEditTask();
+    await refreshTareas();
+  }, [handleEditTask, refreshTareas]);
 
   const { onDragStart, onDragOver, onDrop } = useDnD(onCardDrop);
 
@@ -382,6 +444,7 @@ export default function KanbanPage() {
                     onDragStart={onDragStart}
                     onDragOver={onDragOver}
                     onDrop={onDrop}
+                    onCardClick={onCardClick}
                   />
                 ))
               )}
@@ -392,6 +455,38 @@ export default function KanbanPage() {
 
       {showCreateTablero && (
         <CreateTableroModal onClose={() => setShowCreateTablero(false)} onCreate={onTableroCreated} />
+      )}
+
+      {showSuccessNotice && (
+        <div style={{ position: 'fixed', top: 20, right: 20, background: '#064e3b', color: '#a7f3d0', padding: 16, borderRadius: 8, border: '1px solid rgba(16,185,129,0.35)', boxShadow: '0 6px 18px rgba(0,0,0,0.25)', zIndex: 10001, maxWidth: 400 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>✅ {noticeMessage}</span>
+            <button onClick={() => setShowSuccessNotice(false)} style={{ background: 'transparent', border: 'none', color: '#a7f3d0', fontSize: 18, cursor: 'pointer', marginLeft: 10 }}>×</button>
+          </div>
+        </div>
+      )}
+      {showErrorNotice && (
+        <div style={{ position: 'fixed', top: 20, right: 20, background: '#7f1d1d', color: '#fecaca', padding: 16, borderRadius: 8, border: '1px solid rgba(248,113,113,0.35)', boxShadow: '0 6px 18px rgba(0,0,0,0.25)', zIndex: 10001, maxWidth: 400 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>❌ {noticeMessage}</span>
+            <button onClick={() => setShowErrorNotice(false)} style={{ background: 'transparent', border: 'none', color: '#fecaca', fontSize: 18, cursor: 'pointer', marginLeft: 10 }}>×</button>
+          </div>
+        </div>
+      )}
+
+      {/* Panel de detalle: mismo formulario que "✏️" en /admin/tareas, abierto
+          al hacer clic en una tarjeta en vez de en una fila de la lista. */}
+      {showEditModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <div style={{ background: '#1e2a3a', borderRadius: 12, padding: 24, maxWidth: 500, width: '90%', border: `1px solid ${borderCol}`, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
+            <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 600, color: '#e2e8f0' }}>📋 Detalle de la tarea</h3>
+            <TaskFormFields formData={formData} setFormData={setFormData} admins={admins} estados={estadosCatalog} prioridades={prioridades} expedientes={expedientes} isEdit />
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
+              <button className="btn btn-secondary" onClick={closeEditModal} style={{ padding: '10px 20px' }}>Cancelar</button>
+              <button className="btn btn-primary" onClick={handleEditAndSync} style={{ padding: '10px 20px' }}>Guardar</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
