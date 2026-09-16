@@ -1,27 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useExpedientes } from '../../../hooks/useExpedientes';
+import { estadoProcesoColor } from '../../../constants/estadoProceso';
 import '../../../styles/dashboard.css';
 import '../../../styles/mis-casos.css';
-
-// Colores por estado real del proceso (catalogo estado_proceso) — antes se
-// adivinaba el color con una regex sobre un texto libre inventado.
-const ESTADO_PROCESO_COLOR = {
-  'en preparación': '#3b82f6',
-  'activo': '#10b981',
-  'suspendido': '#f59e0b',
-  'en recurso': '#8b5cf6',
-  'conciliado': '#10b981',
-  'desistido': '#64748b',
-  'terminado por sentencia': '#3b82f6',
-  'archivado': '#64748b',
-  'inactivo': '#64748b',
-  'perdido': '#ef4444',
-  'ganado': '#f0b942',
-};
-
-function estadoColor(estado) {
-  return ESTADO_PROCESO_COLOR[String(estado || '').toLowerCase()] || '#3b82f6';
-}
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -209,7 +190,7 @@ function badge(estado) {
     display: 'inline-block',
     padding: '4px 8px',
     borderRadius: 8,
-    background: estadoColor(estado),
+    background: estadoProcesoColor(estado),
     color: '#fff',
     fontSize: 12,
     fontWeight: 600,

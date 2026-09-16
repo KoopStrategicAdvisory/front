@@ -87,6 +87,13 @@ export async function listEstadosEtapa() {
   return toListResponse(response.data).items;
 }
 
+// ─── Estado del proceso (del expediente) ──────────────────────────────────────
+
+export async function listEstadosProceso() {
+  const response = await api.get('/catalogos/estado-proceso');
+  return toListResponse(response.data).items;
+}
+
 // ─── Tipo de documento ────────────────────────────────────────────────────────
 
 export async function listTiposDocumento() {

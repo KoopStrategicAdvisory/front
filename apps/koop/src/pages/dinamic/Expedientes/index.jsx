@@ -8,6 +8,7 @@ import { listClientes } from '../../../api/clientes';
 import { EditForm, EditRow, EditField, EditSelect } from '../../../components/common/EditFormKit';
 import { Modal, DeleteModal } from '../../../components/common/Modal';
 import { WizardSteps, WizardPanel, WizardFooter, Reveal } from '../../../components/common/Wizard';
+import { estadoProcesoColor } from '../../../constants/estadoProceso';
 import '../../../styles/dashboard.css';
 import '../../../styles/mi-expediente.css';
 
@@ -398,6 +399,9 @@ export default function Expedientes() {
                               {nombreTipoProceso}
                             </span>
                           )}
+                          <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 10, background: `${estadoProcesoColor(exp.nombre_estado_proceso)}22`, color: estadoProcesoColor(exp.nombre_estado_proceso), border: `1px solid ${estadoProcesoColor(exp.nombre_estado_proceso)}44`, fontWeight: 600 }}>
+                            {exp.nombre_estado_proceso || 'Sin estado'}
+                          </span>
                         </div>
                         <h4 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#e2e8f0' }}>{nombreCliente || 'Sin cliente'}</h4>
                       </div>

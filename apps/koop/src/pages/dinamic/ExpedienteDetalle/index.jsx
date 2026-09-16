@@ -8,10 +8,11 @@ import { useDocumentosExpediente } from '../../../hooks/useDocumentosExpediente'
 import { getDownloadUrl } from '../../../api/documentosExpediente';
 import { useAccess } from '../../../context/AccessContext';
 import { createEtapa, updateEtapa, deleteEtapa, generarEtapas, listRadicadosPublicos, createRadicadoPublico, deleteRadicadoPublico } from '../../../api/expedientes';
-import { listEstadosTarea, listPrioridades, listTiposActuacion, listEstadosEtapa, listEtapasProcesales, listTiposDocumento } from '../../../api/catalogos';
+import { listEstadosTarea, listPrioridades, listTiposActuacion, listEstadosEtapa, listEtapasProcesales, listTiposDocumento, listEstadosProceso } from '../../../api/catalogos';
 import { EditForm, EditRow, EditField, EditTextArea, EditSelect, EditCheckbox, EditFileField } from '../../../components/common/EditFormKit';
 import { Modal, ModalFooter, DeleteModal } from '../../../components/common/Modal';
 import { ORGANISMO_OPTIONS } from '../../../constants/consultaPortals';
+import { estadoProcesoColor } from '../../../constants/estadoProceso';
 import '../../../styles/dashboard.css';
 import '../../../styles/mi-expediente.css';
 
@@ -808,6 +809,56 @@ function RadicadosPublicosTab({ expedienteId, canEdit }) {
   );
 }
 
+// ─── Estado del proceso (header) ──────────────────────────────────────────────
+// El estado del expediente (activo/suspendido/ganado/perdido/...) no tenia
+// forma de fijarse ni cambiarse en ningun lado del front — el asistente de
+// crear/editar expediente nunca tuvo ese campo, asi que siempre quedaba en
+// NULL y se veia como "Sin estado" en Mis Casos sin que nadie pudiera
+// corregirlo. Se edita aqui mismo, junto al resto de datos del expediente,
+// en vez de en el asistente (cambia mucho mas seguido que el resto de esos
+// campos, que casi nunca se tocan tras crear el expediente).
+function EstadoProcesoField({ expediente, canEdit, estadosProceso, onChange }) {
+  const [saving, setSaving] = useState(false);
+  const nombreActual = expediente.nombre_estado_proceso;
+  const idActual = expediente.id_estado_proceso != null ? String(expediente.id_estado_proceso) : '';
+
+  const handleChange = async (e) => {
+    const value = e.target.value;
+    if (!value || value === idActual) return;
+    setSaving(true);
+    try {
+      await onChange(Number(value));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!canEdit) {
+    return nombreActual ? (
+      <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 10, background: `${estadoProcesoColor(nombreActual)}22`, color: estadoProcesoColor(nombreActual), border: `1px solid ${estadoProcesoColor(nombreActual)}44`, fontWeight: 600 }}>
+        {nombreActual}
+      </span>
+    ) : null;
+  }
+
+  return (
+    <select
+      value={idActual}
+      onChange={handleChange}
+      disabled={saving || estadosProceso.length === 0}
+      style={{
+        fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 10, cursor: saving ? 'wait' : 'pointer',
+        background: `${estadoProcesoColor(nombreActual)}22`, color: estadoProcesoColor(nombreActual), border: `1px solid ${estadoProcesoColor(nombreActual)}44`,
+      }}
+    >
+      {!idActual && <option value="">Sin estado</option>}
+      {estadosProceso.map((es) => (
+        <option key={es.id} value={String(es.id)} style={{ background: '#1e2a3a', color: '#e2e8f0' }}>{es.nombre}</option>
+      ))}
+    </select>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 const TABS = ['Actuaciones', 'Audiencias', 'Etapas', 'Tareas', 'Documentos', 'Radicados'];
 
@@ -819,10 +870,23 @@ export default function ExpedienteDetalle() {
   const isLawyer = role === 'lawyer';
   const canEdit = isAdmin || isLawyer;
 
-  const { selectExpediente, selectedExpediente, loading, error } = useExpedientes();
+  const { selectExpediente, selectedExpediente, updateExpediente, loading, error } = useExpedientes();
   const [activeTab, setActiveTab] = useState('Actuaciones');
+  const [estadosProceso, setEstadosProceso] = useState([]);
+  const [estadoNotice, setEstadoNotice] = useState(null);
 
   useEffect(() => { if (id) selectExpediente(id); }, [id]);
+  useEffect(() => { listEstadosProceso().then(setEstadosProceso).catch(() => {}); }, []);
+
+  const handleEstadoChange = async (idEstadoProceso) => {
+    try {
+      await updateExpediente(id, { id_estado_proceso: idEstadoProceso });
+      await selectExpediente(id);
+    } catch (e) {
+      setEstadoNotice({ text: e?.response?.data?.message || e?.message || 'No se pudo actualizar el estado', type: 'danger' });
+      setTimeout(() => setEstadoNotice(null), 3500);
+    }
+  };
 
   const tabStyle = (t) => ({
     padding: '10px 20px',
@@ -866,7 +930,9 @@ export default function ExpedienteDetalle() {
                   {selectedExpediente.nombre_subtipo_proceso && (
                     <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 10, background: 'rgba(99,102,241,0.1)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>{selectedExpediente.nombre_subtipo_proceso}</span>
                   )}
+                  <EstadoProcesoField expediente={selectedExpediente} canEdit={canEdit} estadosProceso={estadosProceso} onChange={handleEstadoChange} />
                 </div>
+                {estadoNotice && <div style={{ fontSize: 12, color: estadoNotice.type === 'danger' ? '#fca5a5' : '#a7f3d0', marginBottom: 6 }}>{estadoNotice.type === 'danger' ? '❌' : '✅'} {estadoNotice.text}</div>}
                 <p style={{ margin: 0, fontSize: 18, color: '#a5b4fc', fontWeight: 500 }}>{selectedExpediente.nombre_cliente}</p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, marginTop: 10, fontSize: 13, color: '#64748b' }}>
                   {selectedExpediente.numero_radicado_despacho && <span>Radicado despacho: <span style={{ color: '#94a3b8' }}>{selectedExpediente.numero_radicado_despacho}</span></span>}
