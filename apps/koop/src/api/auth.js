@@ -1,7 +1,7 @@
 // En dev usamos "/api" para pasar por el proxy de Vite; en prod puedes definir VITE_API_BASE
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
-export async function registerApi({ name, email, password, tipoDocumento, numeroDocumento }) {
+export async function registerApi({ name, email, password, tipoDocumento, numeroDocumento, telefono }) {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -12,6 +12,7 @@ export async function registerApi({ name, email, password, tipoDocumento, numero
       password,
       tipo_documento: tipoDocumento || undefined,
       numero_documento: numeroDocumento || undefined,
+      telefono: telefono || undefined,
     }),
   });
   const data = await res.json().catch(() => ({}));

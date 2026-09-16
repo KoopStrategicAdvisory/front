@@ -22,7 +22,7 @@ interface AuthContextValue {
     name: string,
     email: string,
     password: string,
-    extra?: { roles?: KoopRole[]; tipoDocumento?: string; numeroDocumento?: string }
+    extra?: { roles?: KoopRole[]; tipoDocumento?: string; numeroDocumento?: string; telefono?: string }
   ) => Promise<{ ok: boolean; error?: string; data?: unknown }>;
   logout: () => Promise<void>;
   refresh: () => Promise<unknown>;
@@ -72,7 +72,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     name: string,
     email: string,
     password: string,
-    extra?: { roles?: KoopRole[]; tipoDocumento?: string; numeroDocumento?: string }
+    extra?: { roles?: KoopRole[]; tipoDocumento?: string; numeroDocumento?: string; telefono?: string }
   ) => {
     loadingRef.current = true;
     try {

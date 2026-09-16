@@ -29,6 +29,7 @@ import ForgotPassword from './pages/dinamic/auth/ForgotPassword/index.jsx';
 import ResetPassword from './pages/dinamic/auth/ResetPassword/index.jsx';
 import Panel from './pages/dinamic/Panel/index.jsx';
 import AdminUsuarios from './pages/dinamic/AdminUsuariosResponsive/index.jsx';
+import Prospectos from './pages/dinamic/Prospectos/index.jsx';
 import AdminTareas from './pages/dinamic/AdminTareas/index.jsx';
 import ClientesActivos from './pages/dinamic/ClientesActivos/index.jsx';
 import Dashboard from './components/protected/Dashboard.jsx';
@@ -125,6 +126,14 @@ function App() {
             element={
               <RequireRole roles={['admin']}>
                 <AdminUsuarios />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/admin/prospectos"
+            element={
+              <RequireRole roles={['admin', 'lawyer']}>
+                <Prospectos />
               </RequireRole>
             }
           />

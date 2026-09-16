@@ -35,3 +35,16 @@ export async function removeRole(id, rolId) {
   const response = await api.delete(`/users/${id}/roles/${rolId}`);
   return response.data;
 }
+
+// Prospectos: gente que se registro pero su cedula nunca hizo match con
+// ningun cliente — no son cuentas rotas, pueden ser gente real que quiere
+// una asesoria y aun no es clienta.
+export async function listProspectos() {
+  const response = await api.get('/users/prospectos');
+  return response.data;
+}
+
+export async function deleteProspecto(id) {
+  const response = await api.delete(`/users/prospectos/${id}`);
+  return response.data;
+}

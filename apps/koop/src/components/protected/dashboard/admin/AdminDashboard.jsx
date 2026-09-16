@@ -343,6 +343,9 @@ export default function AdminDashboard() {
                 <Link className="btn btn-primary btn-sm" to="/admin/usuarios" title="Administrar usuarios">
                   Administrar usuarios
                 </Link>
+                <Link className="btn btn-secondary btn-sm" to="/admin/prospectos" title="Personas registradas que no son clientes todavía">
+                  Prospectos
+                </Link>
               </div>
             </div>
 

@@ -5,7 +5,7 @@ import logo from '../../../../Images/Koop Logo.png';
 import { useAuth } from '../../../../context/AuthContext';
 
 export default function Register() {
-  const [form, setForm] = useState({ name: '', email: '', password: '', tipoDocumento: 'CC', numeroDocumento: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', tipoDocumento: 'CC', numeroDocumento: '', telefono: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -23,6 +23,7 @@ export default function Register() {
       const res = await register(form.name, form.email, form.password, {
         tipoDocumento: form.tipoDocumento,
         numeroDocumento: form.numeroDocumento,
+        telefono: form.telefono,
       });
       if (res.ok) {
         const payload = res.data || { ok: true };
@@ -32,7 +33,7 @@ export default function Register() {
           // El mensaje real lo decide el backend (evita duplicar el texto en
           // dos lugares); el respaldo tambien recuerda revisar spam.
           setSuccess(payload?.message || 'Registro recibido. Revisa tu correo (y también spam/no deseados) para continuar con la activación de tu cuenta.');
-          setForm({ name: '', email: '', password: '', tipoDocumento: 'CC', numeroDocumento: '' });
+          setForm({ name: '', email: '', password: '', tipoDocumento: 'CC', numeroDocumento: '', telefono: '' });
         }
       } else {
         setError(res.error || 'Error en registro');
@@ -118,6 +119,17 @@ export default function Register() {
             <small style={{ color: '#9fb3cc', display: 'block', marginTop: 6, fontSize: 12 }}>
               Si ya eres cliente de la firma, con esto vinculamos tu cuenta a tu expediente.
             </small>
+          </div>
+          <div className="input-group">
+            <label htmlFor="telefono">Teléfono (opcional)</label>
+            <input
+              id="telefono"
+              name="telefono"
+              type="tel"
+              placeholder="Para contactarte si hace falta"
+              value={form.telefono}
+              onChange={onChange}
+            />
           </div>
 
           {/* Aviso siempre visible (no depende de si el documento hizo match
