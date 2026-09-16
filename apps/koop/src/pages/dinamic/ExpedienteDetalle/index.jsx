@@ -1162,7 +1162,20 @@ export default function ExpedienteDetalle() {
                   {selectedExpediente.numero_radicado_despacho && <span>Radicado despacho: <span style={{ color: '#94a3b8' }}>{selectedExpediente.numero_radicado_despacho}</span></span>}
                   {selectedExpediente.nombre_contraparte && <span>Contraparte: <span style={{ color: '#94a3b8' }}>{selectedExpediente.nombre_contraparte}</span></span>}
                   {selectedExpediente.juzgado_o_autoridad_que_conoce && <span>Juzgado: <span style={{ color: '#94a3b8' }}>{selectedExpediente.juzgado_o_autoridad_que_conoce}</span></span>}
-                  {selectedExpediente.correo_juzgado && <span>Correo juzgado: <span style={{ color: '#94a3b8' }}>{selectedExpediente.correo_juzgado}</span></span>}
+                  {selectedExpediente.correo_juzgado && (
+                    <span>
+                      Correo juzgado:{' '}
+                      <a
+                        href={`mailto:${selectedExpediente.correo_juzgado}?subject=${encodeURIComponent(`Expediente ${selectedExpediente.numero_de_expediente}`)}`}
+                        style={{ color: '#67e8f9', textDecoration: 'none' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+                        title="Enviar correo con el cliente de correo predeterminado"
+                      >
+                        ✉️ {selectedExpediente.correo_juzgado}
+                      </a>
+                    </span>
+                  )}
                   {selectedExpediente.direccion_juzgado && <span>Dirección juzgado: <span style={{ color: '#94a3b8' }}>{selectedExpediente.direccion_juzgado}</span></span>}
                   {selectedExpediente.calidad_usuario && <span style={{ textTransform: 'capitalize' }}>Calidad: <span style={{ color: '#94a3b8' }}>{selectedExpediente.calidad_usuario}</span></span>}
                 </div>
