@@ -16,7 +16,12 @@ export default function Dashboard() {
   const view = useMemo(() => {
     if (!user) return "none";
     if (hasRole(user, "admin")) return "admin";
-    if (hasRole(user, "user")) return "user";
+    // "lawyer" y "client" (abogado/cliente ya normalizados por
+    // KoopCustomApiProvider) tambien ven el portal general, no solo el
+    // literal "user" — antes cualquier cliente auto-registrado caia aqui
+    // en "sin acceso" aunque su cuenta si tuviera el rol 'cliente' bien
+    // asignado en la base de datos.
+    if (hasRole(user, "user") || hasRole(user, "lawyer") || hasRole(user, "client")) return "user";
     return "no-access";
   }, [user]);
 
