@@ -46,6 +46,15 @@ export async function deleteEtapa(expedienteId, etapaId) {
   return response.data;
 }
 
+// Genera las etapas (y tareas ligadas) desde el iter procesal del tipo de
+// proceso del expediente. Se llama sola al crear un expediente nuevo; este
+// endpoint es para "rellenar" expedientes que ya existian antes de esto, o
+// para reintentar si el catalogo se actualizo con una plantilla nueva.
+export async function generarEtapas(expedienteId) {
+  const response = await api.post(`/expedientes/${expedienteId}/generar-etapas`);
+  return response.data;
+}
+
 // Radicados publicos: un mismo expediente puede tener varios, uno por cada
 // organismo externo donde exista (Rama Judicial, Fiscalia, Publicaciones
 // Procesales, SIUGJ, SuperFinanciera...).

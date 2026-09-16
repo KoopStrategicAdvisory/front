@@ -7,7 +7,7 @@ import { useTareasKoop } from '../../../hooks/useTareasKoop';
 import { useDocumentosExpediente } from '../../../hooks/useDocumentosExpediente';
 import { getDownloadUrl } from '../../../api/documentosExpediente';
 import { useAccess } from '../../../context/AccessContext';
-import { createEtapa, updateEtapa, deleteEtapa, listRadicadosPublicos, createRadicadoPublico, deleteRadicadoPublico } from '../../../api/expedientes';
+import { createEtapa, updateEtapa, deleteEtapa, generarEtapas, listRadicadosPublicos, createRadicadoPublico, deleteRadicadoPublico } from '../../../api/expedientes';
 import { listEstadosTarea, listPrioridades, listTiposActuacion, listEstadosEtapa, listEtapasProcesales, listTiposDocumento } from '../../../api/catalogos';
 import { EditForm, EditRow, EditField, EditTextArea, EditSelect, EditCheckbox, EditFileField } from '../../../components/common/EditFormKit';
 import { Modal, ModalFooter, DeleteModal } from '../../../components/common/Modal';
@@ -301,6 +301,7 @@ function EtapasTab({ expedienteId, canEdit }) {
   const [target, setTarget] = useState(null);
   const [form, setForm] = useState(EMPTY_ETAPA);
   const [notice, setNotice] = useState(null);
+  const [generating, setGenerating] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -312,6 +313,23 @@ function EtapasTab({ expedienteId, canEdit }) {
       setError(e?.message || 'Error al cargar etapas');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerar = async () => {
+    setGenerating(true);
+    try {
+      const { etapas, tareas } = await generarEtapas(expedienteId);
+      await load();
+      if (etapas === 0) {
+        msg('No se generó nada — este tipo de proceso todavía no tiene una plantilla de trámite cargada, o ya se habían generado antes.', 'danger');
+      } else {
+        msg(`Se generaron ${etapas} etapa${etapas === 1 ? '' : 's'}${tareas ? ` y ${tareas} tarea${tareas === 1 ? '' : 's'}` : ''} desde la plantilla del trámite.`);
+      }
+    } catch (e) {
+      msg(e?.response?.data?.message || e?.message || 'No se pudo generar', 'danger');
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -370,7 +388,15 @@ function EtapasTab({ expedienteId, canEdit }) {
   return (
     <div>
       {notice && <TabNotice notice={notice} />}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+      <p style={{ fontSize: 13, color: '#9fb3cc', marginTop: 0, marginBottom: 16 }}>
+        Las etapas se pueden generar automáticamente con el orden real del trámite (si el tipo de proceso ya tiene una plantilla cargada), o agregarse una por una a mano.
+      </p>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16 }}>
+        {canEdit && (
+          <button className="btn btn-gold" onClick={handleGenerar} disabled={generating} style={{ fontSize: 13, padding: '8px 16px' }}>
+            {generating ? 'Generando…' : '🪄 Generar desde plantilla'}
+          </button>
+        )}
         {canEdit && <button className="btn btn-primary" onClick={() => { setForm(EMPTY_ETAPA); setShowCreate(true); }} style={{ fontSize: 13, padding: '8px 16px' }}>➕ Nueva Etapa</button>}
       </div>
       {error && <div style={{ color: '#fca5a5', fontSize: 13, marginBottom: 12 }}>⚠️ {error}</div>}
