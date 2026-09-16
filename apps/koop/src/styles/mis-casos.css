@@ -38,6 +38,10 @@
 }
 .timeline-step .dot.done { background: #10b981; border-color: #10b981; }
 .timeline-step .dot.active { background: #f59e0b; border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25); }
+.timeline-step .dot.warn { background: #ef4444; border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.22); }
+.timeline-step .dot.skip { background: #33465c; border-color: #33465c; opacity: 0.5; }
+.timeline-step.skip .label { opacity: 0.55; text-decoration: line-through; }
+.timeline-step .sub-label { display: block; font-size: 11.5px; color: #8ea0bd; margin-top: 2px; font-weight: 400; text-decoration: none; }
 .timeline-step .bar {
   position: absolute; left: 7px; top: 18px; width: 2px; height: calc(100% - 6px);
   background: #33465c;
