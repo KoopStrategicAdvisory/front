@@ -21,6 +21,13 @@ export async function createConsultationLog(payload) {
   return data;
 }
 
+// Para corregir un registro marcado por error (radicado equivocado,
+// resultado mal puesto, etc.) — la bitácora no es de solo agregar.
+export async function deleteConsultationLog(id) {
+  const { data } = await api.delete(`/consultas-externas/${id}`);
+  return data;
+}
+
 // Dispara ahora mismo la verificacion automatica contra la API publica de
 // Rama Judicial (sin captcha) para todos los radicados de ese organismo —
 // el mismo chequeo que corre solo cada dia a las 6am.

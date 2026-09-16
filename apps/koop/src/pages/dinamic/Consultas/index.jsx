@@ -2,13 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import {
   createConsultationLog,
+  deleteConsultationLog,
   downloadConsultationPdf,
   listConsultationLogs,
   listRadicadosActivos,
   verificarRamaJudicial,
 } from '../../../api/consultas';
 import { listExpedientes, listRadicadosPublicos, createRadicadoPublico } from '../../../api/expedientes';
-import { Modal } from '../../../components/common/Modal';
+import { Modal, DeleteModal } from '../../../components/common/Modal';
 import { EditForm, EditSelect, EditTextArea } from '../../../components/common/EditFormKit';
 import { CONSULTATION_PORTALS, ORGANISMO_OPTIONS } from '../../../constants/consultaPortals';
 import '../../../styles/dashboard.css';
@@ -27,8 +28,16 @@ const RESULT_BADGE_COLOR = {
   termino_corriendo: { bg: 'rgba(239,68,68,0.14)', fg: '#fca5a5', border: 'rgba(239,68,68,0.28)' },
 };
 
+// OJO: no usar toISOString() aquí — convierte a UTC, y Bogotá es UTC-5. Una
+// revisión hecha a las 8pm o más tarde quedaba fechada al día SIGUIENTE
+// (ya era el día siguiente en UTC), así que "Registros de hoy" mostraba
+// cosas de ayer y el checklist de hoy no contaba lo ya revisado anoche.
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function formatDateTime(date) {
@@ -55,6 +64,7 @@ export default function ConsultasPage() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [message, setMessage] = useState(null);
   const [verificandoRama, setVerificandoRama] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const isAdminOrLawyer = useMemo(() => {
     const roles = Array.isArray(user?.roles) ? user.roles : [user?.roles];
@@ -225,6 +235,19 @@ export default function ConsultasPage() {
       setMessage({ type: 'error', text: err?.response?.data?.message || 'No se pudo guardar el registro.' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteConsultationLog(deleteTarget.id);
+      setDeleteTarget(null);
+      setMessage({ type: 'success', text: 'Registro eliminado.' });
+      loadRadicados();
+      loadRecords();
+    } catch (err) {
+      setMessage({ type: 'error', text: err?.response?.data?.message || 'No se pudo eliminar el registro.' });
     }
   };
 
@@ -421,9 +444,19 @@ export default function ConsultasPage() {
                       <div style={{ fontWeight: 600 }}>
                         {record.numero_radicado} {record.numero_de_expediente ? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {record.numero_de_expediente}</span> : null}
                       </div>
-                      <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: badge.bg, color: badge.fg, border: `1px solid ${badge.border}` }}>
-                        {RESULT_LABEL[record.resultado] || record.resultado}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: badge.bg, color: badge.fg, border: `1px solid ${badge.border}` }}>
+                          {RESULT_LABEL[record.resultado] || record.resultado}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(record)}
+                          title="Eliminar este registro"
+                          style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#fca5a5', fontSize: 11, cursor: 'pointer' }}
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
                     {(record.nombre_cliente || record.nombre_contraparte) && (
                       <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--text-secondary)' }}>
@@ -523,6 +556,15 @@ export default function ConsultasPage() {
           </button>
         </div>
       </Modal>
+
+      <DeleteModal
+        show={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+        description={deleteTarget && (
+          <>¿Eliminar el registro del radicado <strong style={{ color: '#fc771c' }}>{deleteTarget.numero_radicado}</strong>{deleteTarget.numero_de_expediente ? ` (${deleteTarget.numero_de_expediente})` : ''}?</>
+        )}
+      />
     </div>
   );
 }
