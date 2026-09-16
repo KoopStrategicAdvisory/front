@@ -2,12 +2,22 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useKanban } from '../../../hooks/useKanban';
 import { useAccess } from '../../../context/AccessContext';
 import { listTableros, createTablero as apiCreateTablero, createColumna } from '../../../api/kanban';
-import { listTareas } from '../../../api/tareas';
+import { listTareas, updateTarea } from '../../../api/tareas';
 import { listEstadosTarea } from '../../../api/catalogos';
 import '../../../styles/dashboard.css';
 import '../../../styles/mi-expediente.css';
 
 const borderCol = '#394b61';
+
+// Empareja una columna con su estado real de tarea por nombre — asi es como
+// "Nuevo tablero" las crea (una columna por cada fila de estado_tarea, con el
+// mismo nombre). Si el tablero tiene columnas con otros nombres (renombradas
+// a mano, o de un tablero mas viejo), simplemente no hay sincronizacion para
+// esa columna: el arrastre solo mueve la tarjeta, sin tocar el estado real.
+function estadoIdForColumna(columna, estadosCatalog) {
+  const nombre = String(columna?.nombre || '').trim().toLowerCase();
+  return estadosCatalog.find((e) => String(e.nombre).trim().toLowerCase() === nombre)?.id ?? null;
+}
 
 // ─── DnD helpers ──────────────────────────────────────────────────────────────
 // Reescrito: usaba campos SCREAMING_SNAKE_CASE/_id de una version anterior del
@@ -17,7 +27,7 @@ const borderCol = '#394b61';
 // 'reordenarPosiciones', una funcion que el hook real nunca expuso (solo
 // existe 'moverTarea', que mueve una tarea a otra columna) — arrastrar
 // cualquier tarjeta tiraba un TypeError en consola.
-function useDnD(moverTarea) {
+function useDnD(onCardDrop) {
   const dragging = useRef(null);
 
   const onDragStart = useCallback((e, pos) => {
@@ -36,8 +46,8 @@ function useDnD(moverTarea) {
     const pos = dragging.current;
     dragging.current = null;
     if (!pos || pos.id_columna === columnaId) return;
-    moverTarea(pos.id_tarea, columnaId).catch(() => {});
-  }, [moverTarea]);
+    onCardDrop(pos, columnaId);
+  }, [onCardDrop]);
 
   return { onDragStart, onDragOver, onDrop };
 }
@@ -217,12 +227,15 @@ export default function KanbanPage() {
   const isAdmin = role === 'admin';
   const isLawyer = role === 'lawyer';
 
-  const { tablero, columnas, loading, error, loadTablero, getTarjetasPorColumna, moverTarea } = useKanban();
+  const { tablero, columnas, posiciones, loading, error, loadTablero, getTarjetasPorColumna, moverTarea } = useKanban();
 
   const [tableroId, setTableroId] = useState('');
   const [showCreateTablero, setShowCreateTablero] = useState(false);
   const [tableroListKey, setTableroListKey] = useState(0);
   const [tareasById, setTareasById] = useState({});
+  const [estadosCatalog, setEstadosCatalog] = useState([]);
+
+  useEffect(() => { listEstadosTarea().then(setEstadosCatalog).catch(() => {}); }, []);
 
   const onSelectTablero = (id) => {
     setTableroId(id);
@@ -232,17 +245,59 @@ export default function KanbanPage() {
   // Las posiciones del tablero solo traen el id de la tarea (y, de regalo, su
   // titulo via JOIN) — para mostrar estado y fecha limite en cada tarjeta hay
   // que cruzarlas con el listado real de tareas.
-  useEffect(() => {
-    if (!tablero) { setTareasById({}); return; }
-    let cancelled = false;
-    listTareas({ limit: 500 }).then((res) => {
-      if (cancelled) return;
+  const refreshTareas = useCallback(() => {
+    return listTareas({ limit: 500 }).then((res) => {
       const map = {};
       (res.items ?? []).forEach((t) => { map[t.id] = t; });
       setTareasById(map);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [tablero]);
+      return map;
+    }).catch(() => ({}));
+  }, []);
+
+  useEffect(() => {
+    if (!tablero) { setTareasById({}); return; }
+    refreshTareas();
+  }, [tablero, refreshTareas]);
+
+  // Arrastrar una tarjeta a otra columna hace dos cosas a la vez: mueve la
+  // posicion visual (moverTarea) Y, si el nombre de la columna destino
+  // coincide con un estado real de tarea, actualiza tambien el estado real
+  // de la tarea para que coincida — asi el Kanban deja de ser una vista
+  // "de mentiras" desconectada de Tareas: arrastrar una tarjeta a "Completada"
+  // de verdad marca la tarea como completada, y viceversa (ver abajo, el
+  // efecto de reconciliacion).
+  const onCardDrop = useCallback(async (pos, columnaId) => {
+    try {
+      await moverTarea(pos.id_tarea, columnaId);
+      const columnaDestino = columnas.find((c) => String(c.id) === String(columnaId));
+      const estadoId = estadoIdForColumna(columnaDestino, estadosCatalog);
+      if (estadoId != null) {
+        await updateTarea(pos.id_tarea, { id_estado_tarea: estadoId });
+        await refreshTareas();
+      }
+    } catch { /* moverTarea ya deja su propio error en el hook */ }
+  }, [moverTarea, columnas, estadosCatalog, refreshTareas]);
+
+  // Reconciliacion: si el estado real de una tarea cambio por fuera del Kanban
+  // (por ejemplo, editandola en /admin/tareas), la tarjeta se reubica sola en
+  // la columna que le corresponde la proxima vez que se carga el tablero, en
+  // vez de quedarse "mintiendo" en la columna vieja indefinidamente.
+  useEffect(() => {
+    if (!tablero || columnas.length === 0 || Object.keys(tareasById).length === 0) return;
+    posiciones
+      .filter((p) => p.tipo_entidad === 'tarea' && tareasById[p.id_tarea])
+      .forEach((p) => {
+        const tarea = tareasById[p.id_tarea];
+        const columnaCorrecta = columnas.find((c) => {
+          const estadoColumna = estadoIdForColumna(c, estadosCatalog);
+          return estadoColumna != null && String(estadoColumna) === String(tarea.id_estado_tarea);
+        });
+        if (columnaCorrecta && String(columnaCorrecta.id) !== String(p.id_columna)) {
+          moverTarea(p.id_tarea, columnaCorrecta.id).catch(() => {});
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tablero, columnas, tareasById, estadosCatalog, posiciones]);
 
   // Un tablero recien creado no trae columnas — antes eso dejaba el board
   // permanentemente vacio (no habia ningun botón para agregar columnas). Se
@@ -258,7 +313,7 @@ export default function KanbanPage() {
     onSelectTablero(String(t.id));
   };
 
-  const { onDragStart, onDragOver, onDrop } = useDnD(moverTarea);
+  const { onDragStart, onDragOver, onDrop } = useDnD(onCardDrop);
 
   const columnasOrdenadas = useMemo(() => [...columnas].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0)), [columnas]);
 
