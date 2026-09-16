@@ -52,7 +52,7 @@ export function useKanban(client: KanbanApiClient) {
   const moverTarea = useCallback(async (tareaId: Id, nuevaColumnaId: Id) => {
     if (!tablero) return;
     const prevPosiciones = posiciones;
-    const actual = posiciones.find((p) => p.tipo_entidad === 'TAREA' && p.id_tarea === tareaId);
+    const actual = posiciones.find((p) => p.tipo_entidad === 'tarea' && p.id_tarea === tareaId);
     const ordenVertical = posiciones.filter((p) => p.id_columna === nuevaColumnaId).length;
 
     setError(null);
@@ -61,7 +61,7 @@ export function useKanban(client: KanbanApiClient) {
       const creada = await client.crearPosicion({
         id_tablero: tablero.id,
         id_columna: nuevaColumnaId,
-        tipo_entidad: 'TAREA',
+        tipo_entidad: 'tarea',
         id_tarea: tareaId,
         orden_vertical: ordenVertical,
       });

@@ -67,10 +67,19 @@ export async function mapearEstadoColumna(columnaId, data) {
 }
 
 // ─── Posiciones ───────────────────────────────────────────────────────────────
+// El backend no expone "todas las posiciones de un tablero" en un solo
+// endpoint — el GET real es por columna (/kanban/columnas/:id/posiciones).
+// Se listan las columnas del tablero y se piden sus posiciones en paralelo,
+// para no cambiar el contrato que ya usa useKanban (listPosiciones(tableroId)).
+export async function listPosicionesPorColumna(columnaId) {
+  const response = await api.get(`/kanban/columnas/${columnaId}/posiciones`);
+  return toListResponse(response.data).items;
+}
 
 export async function listPosiciones(tableroId) {
-  const response = await api.get(`/kanban/tableros/${tableroId}/posiciones`);
-  return toListResponse(response.data).items;
+  const columnas = await listColumnas(tableroId);
+  const porColumna = await Promise.all(columnas.map((c) => listPosicionesPorColumna(c.id)));
+  return porColumna.flat();
 }
 
 // Swagger: no existe un update batch — mover una tarjeta es crear una posición nueva

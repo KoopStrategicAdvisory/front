@@ -31,12 +31,12 @@ export const mockColumnasKanban = (): ColumnaKanban[] => [
 ];
 
 export const mockKanbanPosicion = (
-  overrides?: Partial<Extract<KanbanPosicion, { tipo_entidad: 'TAREA' }>>
+  overrides?: Partial<Extract<KanbanPosicion, { tipo_entidad: 'tarea' }>>
 ): KanbanPosicion => ({
   id: 1,
   id_tablero: 1,
   id_columna: 1,
-  tipo_entidad: 'TAREA',
+  tipo_entidad: 'tarea',
   id_tarea: 1,
   orden_vertical: 0,
   active: true,

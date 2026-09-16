@@ -86,12 +86,12 @@ describe('useKanban', () => {
 
       expect(client.eliminarPosicion).toHaveBeenCalledWith(1);
       expect(client.crearPosicion).toHaveBeenCalledWith(
-        expect.objectContaining({ id_tablero: 1, id_columna: 2, tipo_entidad: 'TAREA', id_tarea: 1 }),
+        expect.objectContaining({ id_tablero: 1, id_columna: 2, tipo_entidad: 'tarea', id_tarea: 1 }),
       );
 
       await waitFor(() => {
         const enColumna2 = result.current.getTarjetasPorColumna(2);
-        expect(enColumna2.some((p) => p.tipo_entidad === 'TAREA' && p.id_tarea === 1)).toBe(true);
+        expect(enColumna2.some((p) => p.tipo_entidad === 'tarea' && p.id_tarea === 1)).toBe(true);
       });
     });
 
@@ -112,7 +112,7 @@ describe('useKanban', () => {
 
       await waitFor(() => {
         const enColumna1 = result.current.getTarjetasPorColumna(1);
-        expect(enColumna1.some((p) => p.tipo_entidad === 'TAREA' && p.id_tarea === 1)).toBe(true);
+        expect(enColumna1.some((p) => p.tipo_entidad === 'tarea' && p.id_tarea === 1)).toBe(true);
       });
       expect(result.current.error).toBe('No permitido');
     });

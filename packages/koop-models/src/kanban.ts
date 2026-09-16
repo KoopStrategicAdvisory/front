@@ -33,7 +33,10 @@ export interface ColumnaKanban {
 export type CreateColumnaInput = Pick<ColumnaKanban, 'nombre' | 'orden'> & { color?: string };
 export type UpdateColumnaInput = Partial<CreateColumnaInput>;
 
-export type TipoEntidadKanban = 'TAREA' | 'ETAPA';
+// Minuscula: asi lo exige el CHECK real de la columna en Postgres
+// (tarea_kanban_position.tipo_entidad IN ('tarea','etapa')) — el codigo
+// anterior usaba 'TAREA'/'ETAPA' en mayuscula, que la base siempre rechazaba.
+export type TipoEntidadKanban = 'tarea' | 'etapa';
 
 /** Una posición referencia una tarea O una etapa de expediente, nunca ambas */
 export type KanbanPosicion =
@@ -41,7 +44,7 @@ export type KanbanPosicion =
       id: Id;
       id_tablero: Id;
       id_columna: Id;
-      tipo_entidad: 'TAREA';
+      tipo_entidad: 'tarea';
       id_tarea: Id;
       orden_vertical?: number;
       active: boolean;
@@ -50,7 +53,7 @@ export type KanbanPosicion =
       id: Id;
       id_tablero: Id;
       id_columna: Id;
-      tipo_entidad: 'ETAPA';
+      tipo_entidad: 'etapa';
       id_expediente_etapa: Id;
       orden_vertical?: number;
       active: boolean;
@@ -59,8 +62,8 @@ export type KanbanPosicion =
 /** Escrito como unión explícita (no `Omit<KanbanPosicion, ...>`) porque `Omit` sobre una unión
  * discriminada colapsa a las propiedades comunes y pierde el discriminante `tipo_entidad`. */
 export type CreateKanbanPosicionInput =
-  | { id_tablero: Id; id_columna: Id; tipo_entidad: 'TAREA'; id_tarea: Id; orden_vertical?: number }
-  | { id_tablero: Id; id_columna: Id; tipo_entidad: 'ETAPA'; id_expediente_etapa: Id; orden_vertical?: number };
+  | { id_tablero: Id; id_columna: Id; tipo_entidad: 'tarea'; id_tarea: Id; orden_vertical?: number }
+  | { id_tablero: Id; id_columna: Id; tipo_entidad: 'etapa'; id_expediente_etapa: Id; orden_vertical?: number };
 
 export interface TableroConColumnas extends Tablero {
   columnas: ColumnaKanban[];

@@ -110,12 +110,18 @@ export default function Navbar() {
                 <div className="dropdown-group">
                   <Link to="/dashboard">Perfil</Link>
                   {isAdmin && <Link to="/admin/clientes-activos">Clientes</Link>}
-                  <Link to="/mi-expediente">{isAdmin ? 'Mis expedientes' : 'Mi expediente'}</Link>
+                  {/* "Mis expedientes"/"Expedientes" son para quien administra casos (los
+                      propios vs. todos los de la firma); "Mis casos" es la vista pensada
+                      para el cliente, con la línea de tiempo del proceso. Antes se mostraban
+                      las tres a todo el mundo — un admin/abogado veía "Mis casos" (que no
+                      aplica, ellos no son el cliente) y un cliente veía "Mi expediente" (una
+                      lista sin línea de tiempo, redundante con "Mis casos"). */}
+                  {(isAdmin || isLawyer) && <Link to="/mi-expediente">Mis expedientes</Link>}
                   {(isAdmin || isLawyer) && <Link to="/admin/expedientes">Expedientes</Link>}
                   {(isAdmin || isLawyer) && <Link to="/admin/kanban">Kanban</Link>}
                   {isAdmin && <Link to="/admin/tareas">Tareas</Link>}
                   {(isAdmin || isLawyer) && <Link to="/consultas">Consultas</Link>}
-                  <Link to="/mis-casos">Mis casos</Link>
+                  {!isAdmin && !isLawyer && <Link to="/mis-casos">Mis casos</Link>}
                   {isAdmin && <Link to="/admin/usuarios">Administrar</Link>}
                   <Link to="/logout">
                     Cerrar sesión
