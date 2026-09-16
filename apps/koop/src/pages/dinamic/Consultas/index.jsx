@@ -32,6 +32,11 @@ const CONSULTATION_PORTALS = [
   { label: 'Consultas Jurisdiccionales SuperFinanciera', url: 'https://www.superfinanciera.gov.co/formulesuqueja/faces/consulta/jurisdiccional.xhtml' },
 ];
 
+const PORTAL_OPTIONS = [
+  ...CONSULTATION_PORTALS.map((p) => ({ value: p.label, label: p.label })),
+  { value: 'Otro', label: 'Otro sitio' },
+];
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -58,7 +63,7 @@ export default function ConsultasPage() {
 
   // Modal de registro (se abre desde el checklist o desde "Registro manual")
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ id_expediente: '', numero_radicado: '', resultado: 'sin_movimiento', observacion: '' });
+  const [form, setForm] = useState({ id_expediente: '', numero_radicado: '', portal_consultado: CONSULTATION_PORTALS[0].label, resultado: 'sin_movimiento', observacion: '' });
   const [saving, setSaving] = useState(false);
 
   const pendientes = useMemo(() => radicados.filter((r) => !r.ultima_consulta_hoy_id), [radicados]);
@@ -86,6 +91,7 @@ export default function ConsultasPage() {
     setForm({
       id_expediente: item?.id_expediente || '',
       numero_radicado: item?.numero_radicado_despacho || '',
+      portal_consultado: CONSULTATION_PORTALS[0].label,
       resultado: 'sin_movimiento',
       observacion: '',
     });
@@ -103,6 +109,7 @@ export default function ConsultasPage() {
       await createConsultationLog({
         id_expediente: form.id_expediente || undefined,
         numero_radicado: form.numero_radicado.trim(),
+        portal_consultado: form.portal_consultado || undefined,
         resultado: form.resultado,
         observacion: form.observacion.trim() || undefined,
         fecha_consulta: selectedDate,
@@ -293,6 +300,16 @@ export default function ConsultasPage() {
                         {RESULT_LABEL[record.resultado] || record.resultado}
                       </span>
                     </div>
+                    {(record.nombre_cliente || record.nombre_contraparte) && (
+                      <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                        Partes: {record.nombre_cliente || '—'}{record.nombre_contraparte ? ` vs. ${record.nombre_contraparte}` : ''}
+                      </div>
+                    )}
+                    {record.portal_consultado && (
+                      <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                        Sitio consultado: {record.portal_consultado}
+                      </div>
+                    )}
                     {record.observacion && <div style={{ marginTop: 8, color: 'var(--text-secondary)', fontSize: 13.5 }}>{record.observacion}</div>}
                     <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
                       Revisado por {record.nombre_usuario || '—'} · {formatDateTime(record.created_at)}
@@ -308,6 +325,12 @@ export default function ConsultasPage() {
       <Modal show={showForm} onClose={() => setShowForm(false)} title="✅ Registrar revisión">
         <EditForm>
           <EditField label="Radicado *" value={form.numero_radicado} onChange={(e) => setForm({ ...form, numero_radicado: e.target.value })} placeholder="Ej: 11001-31-05-2025-00123" />
+          <EditSelect
+            label="Sitio / portal consultado"
+            value={form.portal_consultado}
+            onChange={(e) => setForm({ ...form, portal_consultado: e.target.value })}
+            options={PORTAL_OPTIONS}
+          />
           <EditSelect
             label="Resultado"
             value={form.resultado}
