@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useExpedientes } from '../../../hooks/useExpedientes';
 import { useActuaciones } from '../../../hooks/useActuaciones';
@@ -944,7 +944,7 @@ function RadicadoPublicoForm({ f, onF }) {
   );
 }
 
-function RadicadosPublicosTab({ expedienteId, canEdit }) {
+function RadicadosPublicosTab({ expedienteId, canEdit, onChanged }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -976,6 +976,7 @@ function RadicadosPublicosTab({ expedienteId, canEdit }) {
     try {
       await createRadicadoPublico(expedienteId, { organismo: form.organismo, numero_radicado: form.numero_radicado.trim() });
       await load();
+      onChanged?.();
       setShowCreate(false); setForm(EMPTY_RADICADO); msg('Radicado agregado');
     } catch (e) { msg(e?.response?.data?.message || e?.message || 'Error', 'danger'); }
   };
@@ -984,6 +985,7 @@ function RadicadosPublicosTab({ expedienteId, canEdit }) {
     try {
       await deleteRadicadoPublico(expedienteId, target.id);
       setItems((p) => p.filter((r) => r.id !== target.id));
+      onChanged?.();
       setShowDelete(false); msg('Radicado eliminado');
     } catch (e) { msg(e?.response?.data?.message || e?.message || 'Error', 'danger'); }
   };
@@ -1095,9 +1097,18 @@ export default function ExpedienteDetalle() {
   const [activeTab, setActiveTab] = useState('Actuaciones');
   const [estadosProceso, setEstadosProceso] = useState([]);
   const [estadoNotice, setEstadoNotice] = useState(null);
+  const [radicadosPublicos, setRadicadosPublicos] = useState([]);
 
   useEffect(() => { if (id) selectExpediente(id); }, [id]);
   useEffect(() => { listEstadosProceso().then(setEstadosProceso).catch(() => {}); }, []);
+  // Se usa para el asunto del correo al juzgado: siempre debe llevar el
+  // radicado publico (el que reconoce la entidad externa), nunca el numero
+  // interno KOOP — se recarga cada vez que cambian los radicados en la
+  // pestaña "Radicados" via el prop onChanged de abajo.
+  const loadRadicadosPublicos = useCallback(() => {
+    if (id) listRadicadosPublicos(id).then((data) => setRadicadosPublicos(Array.isArray(data?.items) ? data.items : [])).catch(() => setRadicadosPublicos([]));
+  }, [id]);
+  useEffect(() => { loadRadicadosPublicos(); }, [loadRadicadosPublicos]);
 
   const handleEstadoChange = async (idEstadoProceso) => {
     try {
@@ -1108,6 +1119,14 @@ export default function ExpedienteDetalle() {
       setTimeout(() => setEstadoNotice(null), 3500);
     }
   };
+
+  // El asunto del correo al juzgado siempre debe llevar el radicado publico
+  // (el que reconoce la entidad externa) y nunca el numero interno KOOP —
+  // ese numero solo tiene sentido dentro de la firma. Si todavia no hay
+  // radicado publico cargado, se usa el radicado del despacho (tambien
+  // externo); si tampoco existe, se manda sin numero de radicado.
+  const radicadoParaAsunto = radicadosPublicos[0]?.numero_radicado || selectedExpediente?.numero_radicado_despacho || '';
+  const asuntoCorreoJuzgado = radicadoParaAsunto ? `Radicado ${radicadoParaAsunto}` : 'Notificación judicial';
 
   const tabStyle = (t) => ({
     padding: '10px 20px',
@@ -1166,7 +1185,7 @@ export default function ExpedienteDetalle() {
                     <span>
                       Correo juzgado:{' '}
                       <a
-                        href={`mailto:${selectedExpediente.correo_juzgado}?subject=${encodeURIComponent(`Expediente ${selectedExpediente.numero_de_expediente}`)}`}
+                        href={`mailto:${selectedExpediente.correo_juzgado}?subject=${encodeURIComponent(asuntoCorreoJuzgado)}`}
                         style={{ color: '#67e8f9', textDecoration: 'none' }}
                         onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
@@ -1193,7 +1212,7 @@ export default function ExpedienteDetalle() {
             {activeTab === 'Etapas' && <EtapasTab expedienteId={id} canEdit={canEdit} />}
             {activeTab === 'Tareas' && <TareasTab expedienteId={id} canEdit={canEdit} />}
             {activeTab === 'Documentos' && <DocumentosTab expedienteId={id} canEdit={canEdit} />}
-            {activeTab === 'Radicados' && <RadicadosPublicosTab expedienteId={id} canEdit={canEdit} />}
+            {activeTab === 'Radicados' && <RadicadosPublicosTab expedienteId={id} canEdit={canEdit} onChanged={loadRadicadosPublicos} />}
           </>
         ) : null}
       </div>
