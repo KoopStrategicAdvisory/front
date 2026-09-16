@@ -6,8 +6,10 @@ import {
   listConsultationLogs,
   listRadicadosActivos,
 } from '../../../api/consultas';
+import { listExpedientes, listRadicadosPublicos, createRadicadoPublico } from '../../../api/expedientes';
 import { Modal } from '../../../components/common/Modal';
-import { EditForm, EditField, EditSelect, EditTextArea } from '../../../components/common/EditFormKit';
+import { EditForm, EditSelect, EditTextArea } from '../../../components/common/EditFormKit';
+import { CONSULTATION_PORTALS, ORGANISMO_OPTIONS } from '../../../constants/consultaPortals';
 import '../../../styles/dashboard.css';
 
 const RESULT_OPTIONS = [
@@ -24,19 +26,6 @@ const RESULT_BADGE_COLOR = {
   termino_corriendo: { bg: 'rgba(239,68,68,0.14)', fg: '#fca5a5', border: 'rgba(239,68,68,0.28)' },
 };
 
-const CONSULTATION_PORTALS = [
-  { label: 'Consulta de procesos Rama Judicial', url: 'https://consultaprocesos.ramajudicial.gov.co/Procesos/Index' },
-  { label: 'Publicaciones Procesales Rama Judicial', url: 'https://publicacionesprocesales.ramajudicial.gov.co/' },
-  { label: 'SIUGJ', url: 'https://siugj.ramajudicial.gov.co/principalPortal/index.php' },
-  { label: 'Consultas Fiscalía', url: 'https://consulta-web.fiscalia.gov.co/' },
-  { label: 'Consultas Jurisdiccionales SuperFinanciera', url: 'https://www.superfinanciera.gov.co/formulesuqueja/faces/consulta/jurisdiccional.xhtml' },
-];
-
-const PORTAL_OPTIONS = [
-  ...CONSULTATION_PORTALS.map((p) => ({ value: p.label, label: p.label })),
-  { value: 'Otro', label: 'Otro sitio' },
-];
-
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -44,6 +33,15 @@ function todayIso() {
 function formatDateTime(date) {
   return new Date(date).toLocaleString('es-CO', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
+
+const EMPTY_FORM = {
+  id_expediente: '',
+  id_radicado_publico: '',
+  numero_radicado: '',
+  organismo: '',
+  resultado: 'sin_movimiento',
+  observacion: '',
+};
 
 export default function ConsultasPage() {
   const { user } = useAuth();
@@ -61,10 +59,23 @@ export default function ConsultasPage() {
     return roles.some((role) => ['admin', 'lawyer'].includes(String(role || '').toLowerCase()));
   }, [user]);
 
-  // Modal de registro (se abre desde el checklist o desde "Registro manual")
+  // Modal de registro — dos modos:
+  //  - checklist: el radicado ya viene fijo (viene del checklist de hoy).
+  //  - manual: primero se elige el expediente, y de ahi el radicado publico
+  //    (o se crea uno nuevo en el sitio), porque el mismo expediente puede
+  //    tener un radicado distinto por cada organismo externo.
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ id_expediente: '', numero_radicado: '', portal_consultado: CONSULTATION_PORTALS[0].label, resultado: 'sin_movimiento', observacion: '' });
+  const [formMode, setFormMode] = useState('checklist');
+  const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+
+  const [expedientes, setExpedientes] = useState([]);
+  const [expedientesLoading, setExpedientesLoading] = useState(false);
+  const [expRadicados, setExpRadicados] = useState([]);
+  const [expRadicadosLoading, setExpRadicadosLoading] = useState(false);
+  const [showNewRadicado, setShowNewRadicado] = useState(false);
+  const [newRadicado, setNewRadicado] = useState({ organismo: CONSULTATION_PORTALS[0].label, numero_radicado: '' });
+  const [addingRadicado, setAddingRadicado] = useState(false);
 
   const pendientes = useMemo(() => radicados.filter((r) => !r.ultima_consulta_hoy_id), [radicados]);
   const revisados = useMemo(() => radicados.filter((r) => r.ultima_consulta_hoy_id), [radicados]);
@@ -73,7 +84,7 @@ export default function ConsultasPage() {
     setRadicadosLoading(true);
     listRadicadosActivos(selectedDate)
       .then((data) => setRadicados(Array.isArray(data.items) ? data.items : []))
-      .catch(() => setMessage({ type: 'error', text: 'No se pudieron cargar los expedientes activos.' }))
+      .catch(() => setMessage({ type: 'error', text: 'No se pudieron cargar los radicados activos.' }))
       .finally(() => setRadicadosLoading(false));
   };
 
@@ -87,20 +98,85 @@ export default function ConsultasPage() {
 
   useEffect(() => { if (selectedDate) { loadRadicados(); loadRecords(); } }, [selectedDate]);
 
-  const openFormFor = (item) => {
+  const openFromChecklist = (item) => {
+    setFormMode('checklist');
     setForm({
-      id_expediente: item?.id_expediente || '',
-      numero_radicado: item?.numero_radicado_despacho || '',
-      portal_consultado: CONSULTATION_PORTALS[0].label,
+      id_expediente: item.id_expediente,
+      id_radicado_publico: item.id_radicado_publico,
+      numero_radicado: item.numero_radicado,
+      organismo: item.organismo,
       resultado: 'sin_movimiento',
       observacion: '',
     });
     setShowForm(true);
   };
 
+  const openManual = () => {
+    setFormMode('manual');
+    setForm(EMPTY_FORM);
+    setExpRadicados([]);
+    setShowNewRadicado(false);
+    setShowForm(true);
+    if (expedientes.length === 0) {
+      setExpedientesLoading(true);
+      listExpedientes({ active: true, limit: 200 })
+        .then((data) => setExpedientes(Array.isArray(data.items) ? data.items : []))
+        .catch(() => setMessage({ type: 'error', text: 'No se pudieron cargar los expedientes.' }))
+        .finally(() => setExpedientesLoading(false));
+    }
+  };
+
+  const onSelectExpediente = (idExpediente) => {
+    setForm((f) => ({ ...f, id_expediente: idExpediente, id_radicado_publico: '', numero_radicado: '', organismo: '' }));
+    setExpRadicados([]);
+    setShowNewRadicado(false);
+    if (!idExpediente) return;
+    setExpRadicadosLoading(true);
+    listRadicadosPublicos(idExpediente)
+      .then((data) => {
+        const items = Array.isArray(data.items) ? data.items : [];
+        setExpRadicados(items);
+        if (items.length === 0) setShowNewRadicado(true);
+      })
+      .catch(() => setMessage({ type: 'error', text: 'No se pudieron cargar los radicados de ese expediente.' }))
+      .finally(() => setExpRadicadosLoading(false));
+  };
+
+  const onSelectRadicadoPublico = (idRadicado) => {
+    const found = expRadicados.find((r) => String(r.id) === String(idRadicado));
+    setForm((f) => ({
+      ...f,
+      id_radicado_publico: idRadicado,
+      numero_radicado: found?.numero_radicado || '',
+      organismo: found?.organismo || '',
+    }));
+  };
+
+  const handleAddRadicado = async () => {
+    if (!form.id_expediente || !newRadicado.numero_radicado.trim()) {
+      setMessage({ type: 'error', text: 'Elige el expediente y escribe el número de radicado.' });
+      return;
+    }
+    setAddingRadicado(true);
+    try {
+      const created = await createRadicadoPublico(form.id_expediente, {
+        organismo: newRadicado.organismo,
+        numero_radicado: newRadicado.numero_radicado.trim(),
+      });
+      setExpRadicados((prev) => [...prev.filter((r) => r.id !== created.id), created]);
+      setForm((f) => ({ ...f, id_radicado_publico: created.id, numero_radicado: created.numero_radicado, organismo: created.organismo }));
+      setShowNewRadicado(false);
+      setNewRadicado({ organismo: CONSULTATION_PORTALS[0].label, numero_radicado: '' });
+    } catch (err) {
+      setMessage({ type: 'error', text: err?.response?.data?.message || 'No se pudo agregar el radicado.' });
+    } finally {
+      setAddingRadicado(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!form.numero_radicado.trim()) {
-      setMessage({ type: 'error', text: 'El radicado es requerido.' });
+      setMessage({ type: 'error', text: 'Selecciona (o agrega) un radicado antes de guardar.' });
       return;
     }
     setSaving(true);
@@ -108,8 +184,9 @@ export default function ConsultasPage() {
     try {
       await createConsultationLog({
         id_expediente: form.id_expediente || undefined,
+        id_radicado_publico: form.id_radicado_publico || undefined,
         numero_radicado: form.numero_radicado.trim(),
-        portal_consultado: form.portal_consultado || undefined,
+        portal_consultado: form.organismo || undefined,
         resultado: form.resultado,
         observacion: form.observacion.trim() || undefined,
         fecha_consulta: selectedDate,
@@ -156,6 +233,11 @@ export default function ConsultasPage() {
   }
 
   const borderCol = 'var(--border)';
+  const expedienteOptions = expedientes.map((e) => ({
+    value: String(e.id),
+    label: `${e.numero_de_expediente}${e.nombre_cliente ? ` — ${e.nombre_cliente}` : ''}`,
+  }));
+  const radicadoOptions = expRadicados.map((r) => ({ value: String(r.id), label: `${r.organismo} — ${r.numero_radicado}` }));
 
   return (
     <div className="dash-page" style={{ padding: 24 }}>
@@ -193,12 +275,15 @@ export default function ConsultasPage() {
               {radicadosLoading ? 'Cargando…' : `${revisados.length} de ${radicados.length} revisados`}
             </span>
           </div>
+          <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+            Un mismo expediente puede aparecer varias veces si tiene radicado en más de un organismo (Rama Judicial, Fiscalía, etc.) — cada uno se revisa por separado.
+          </p>
 
           {radicadosLoading ? (
-            <div style={{ color: 'var(--text-secondary)', padding: '12px 0' }}>Cargando expedientes activos...</div>
+            <div style={{ color: 'var(--text-secondary)', padding: '12px 0' }}>Cargando radicados activos...</div>
           ) : radicados.length === 0 ? (
             <div style={{ color: 'var(--text-secondary)', padding: '12px 0' }}>
-              No hay expedientes activos con radicado de despacho registrado todavía.
+              Ningún expediente activo tiene todavía un radicado público registrado. Usa "Registro manual" para agregar el primero.
             </div>
           ) : (
             <div style={{ display: 'grid', gap: 10, marginTop: 4 }}>
@@ -207,7 +292,7 @@ export default function ConsultasPage() {
                 const badge = done ? RESULT_BADGE_COLOR[item.ultimo_resultado_hoy] || RESULT_BADGE_COLOR.sin_movimiento : null;
                 return (
                   <div
-                    key={item.id_expediente}
+                    key={item.id_radicado_publico}
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
                       padding: '12px 14px', borderRadius: 12,
@@ -219,8 +304,11 @@ export default function ConsultasPage() {
                       <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>
                         {item.nombre_cliente || 'Sin cliente'} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {item.numero_de_expediente}</span>
                       </div>
-                      <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2 }}>
-                        Radicado: {item.numero_radicado_despacho}
+                      <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(99,102,241,0.14)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)' }}>
+                          {item.organismo}
+                        </span>
+                        <span>Radicado: {item.numero_radicado}</span>
                       </div>
                     </div>
                     {done ? (
@@ -228,7 +316,7 @@ export default function ConsultasPage() {
                         ✓ {RESULT_LABEL[item.ultimo_resultado_hoy] || 'Revisado'}
                       </span>
                     ) : (
-                      <button type="button" className="btn btn-gold btn-sm" onClick={() => openFormFor(item)}>
+                      <button type="button" className="btn btn-gold btn-sm" onClick={() => openFromChecklist(item)}>
                         Marcar revisado
                       </button>
                     )}
@@ -260,19 +348,19 @@ export default function ConsultasPage() {
           </div>
         </div>
 
-        {/* Registro manual (radicado que no está en el checklist) */}
+        {/* Registro manual */}
         <div className="dash-item" style={{ marginTop: 16 }}>
           <div className="koop-section-head" style={{ justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span className="koop-section-icon" aria-hidden="true">✍️</span>
               <span className="koop-section-title">Registro manual</span>
             </div>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => openFormFor(null)}>
-              + Nuevo registro
+            <button type="button" className="btn btn-secondary btn-sm" onClick={openManual}>
+              + Elegir expediente
             </button>
           </div>
           <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
-            Para un radicado externo que aún no tiene expediente asociado en el sistema.
+            Elige el expediente y el organismo/radicado público que corresponda (Rama Judicial, Fiscalía, Publicaciones Procesales...) — si el expediente aún no tiene ese radicado registrado, lo puedes agregar en el momento.
           </p>
         </div>
 
@@ -324,13 +412,65 @@ export default function ConsultasPage() {
 
       <Modal show={showForm} onClose={() => setShowForm(false)} title="✅ Registrar revisión">
         <EditForm>
-          <EditField label="Radicado *" value={form.numero_radicado} onChange={(e) => setForm({ ...form, numero_radicado: e.target.value })} placeholder="Ej: 11001-31-05-2025-00123" />
-          <EditSelect
-            label="Sitio / portal consultado"
-            value={form.portal_consultado}
-            onChange={(e) => setForm({ ...form, portal_consultado: e.target.value })}
-            options={PORTAL_OPTIONS}
-          />
+          {formMode === 'manual' ? (
+            <>
+              <EditSelect
+                label="Expediente *"
+                value={form.id_expediente ? String(form.id_expediente) : ''}
+                onChange={(e) => onSelectExpediente(e.target.value)}
+                options={expedientesLoading ? [{ value: '', label: 'Cargando expedientes...' }] : expedienteOptions}
+              />
+              {form.id_expediente && (
+                <>
+                  {expRadicadosLoading ? (
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Cargando radicados del expediente...</div>
+                  ) : radicadoOptions.length > 0 && !showNewRadicado ? (
+                    <>
+                      <EditSelect
+                        label="Radicado público *"
+                        value={form.id_radicado_publico ? String(form.id_radicado_publico) : ''}
+                        onChange={(e) => onSelectRadicadoPublico(e.target.value)}
+                        options={radicadoOptions}
+                      />
+                      <button type="button" className="btn btn-secondary btn-sm" style={{ justifySelf: 'start' }} onClick={() => setShowNewRadicado(true)}>
+                        + Agregar otro radicado a este expediente
+                      </button>
+                    </>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 10, padding: 12, borderRadius: 10, border: '1px dashed var(--border)' }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-secondary)' }}>Nuevo radicado público</div>
+                      <EditSelect
+                        label="Organismo"
+                        value={newRadicado.organismo}
+                        onChange={(e) => setNewRadicado((n) => ({ ...n, organismo: e.target.value }))}
+                        options={ORGANISMO_OPTIONS}
+                      />
+                      <input
+                        className="input"
+                        placeholder="Número de radicado"
+                        value={newRadicado.numero_radicado}
+                        onChange={(e) => setNewRadicado((n) => ({ ...n, numero_radicado: e.target.value }))}
+                      />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button type="button" className="btn btn-primary btn-sm" onClick={handleAddRadicado} disabled={addingRadicado}>
+                          {addingRadicado ? 'Agregando…' : 'Agregar radicado'}
+                        </button>
+                        {radicadoOptions.length > 0 && (
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowNewRadicado(false)}>Cancelar</button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          ) : (
+            <div style={{ padding: 12, borderRadius: 10, background: 'rgba(148,163,184,0.05)', border: '1px solid var(--border-subtle)', fontSize: 13.5 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>{form.organismo}</div>
+              <div style={{ color: 'var(--text-secondary)' }}>Radicado: {form.numero_radicado}</div>
+            </div>
+          )}
+
           <EditSelect
             label="Resultado"
             value={form.resultado}
@@ -341,7 +481,7 @@ export default function ConsultasPage() {
         </EditForm>
         <div className="kf-modal-footer" style={{ padding: '18px 0 0' }}>
           <button className="btn btn-secondary" type="button" onClick={() => setShowForm(false)} disabled={saving}>Cancelar</button>
-          <button className="btn btn-gold" type="button" onClick={handleSubmit} disabled={saving}>
+          <button className="btn btn-gold" type="button" onClick={handleSubmit} disabled={saving || !form.numero_radicado}>
             {saving ? 'Guardando…' : 'Guardar registro'}
           </button>
         </div>

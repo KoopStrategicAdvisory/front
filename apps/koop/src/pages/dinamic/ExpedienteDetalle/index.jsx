@@ -7,10 +7,11 @@ import { useTareasKoop } from '../../../hooks/useTareasKoop';
 import { useDocumentosExpediente } from '../../../hooks/useDocumentosExpediente';
 import { getDownloadUrl } from '../../../api/documentosExpediente';
 import { useAccess } from '../../../context/AccessContext';
-import { createEtapa, updateEtapa, deleteEtapa } from '../../../api/expedientes';
+import { createEtapa, updateEtapa, deleteEtapa, listRadicadosPublicos, createRadicadoPublico, deleteRadicadoPublico } from '../../../api/expedientes';
 import { listEstadosTarea, listPrioridades, listTiposActuacion, listEstadosEtapa, listEtapasProcesales, listTiposDocumento } from '../../../api/catalogos';
 import { EditForm, EditRow, EditField, EditTextArea, EditSelect, EditCheckbox, EditFileField } from '../../../components/common/EditFormKit';
 import { Modal, ModalFooter, DeleteModal } from '../../../components/common/Modal';
+import { ORGANISMO_OPTIONS } from '../../../constants/consultaPortals';
 import '../../../styles/dashboard.css';
 import '../../../styles/mi-expediente.css';
 
@@ -679,8 +680,110 @@ function DocumentosTab({ expedienteId, canEdit }) {
   );
 }
 
+// ─── Radicados públicos Tab ─────────────────────────────────────────────────────
+// Un mismo expediente puede tener un radicado distinto por cada organismo
+// externo (Rama Judicial, Fiscalia, Publicaciones Procesales, SIUGJ,
+// SuperFinanciera...) — sin uno de estos registrado aqui, el expediente
+// no aparece como pendiente de revisar en la bitacora de Consultas.
+const EMPTY_RADICADO = { organismo: ORGANISMO_OPTIONS[0]?.value || '', numero_radicado: '' };
+
+function RadicadoPublicoForm({ f, onF }) {
+  return (
+    <EditForm style={{ marginTop: 8 }}>
+      <EditSelect label="Organismo *" value={f.organismo} onChange={(e) => onF({ ...f, organismo: e.target.value })} options={ORGANISMO_OPTIONS} />
+      <EditField label="Número de radicado *" value={f.numero_radicado} onChange={(e) => onF({ ...f, numero_radicado: e.target.value })} placeholder="Ej: 11001-31-05-2025-00123" />
+    </EditForm>
+  );
+}
+
+function RadicadosPublicosTab({ expedienteId, canEdit }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [target, setTarget] = useState(null);
+  const [form, setForm] = useState(EMPTY_RADICADO);
+  const [notice, setNotice] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await listRadicadosPublicos(expedienteId);
+      setItems(Array.isArray(data.items) ? data.items : []);
+    } catch (e) {
+      setError(e?.response?.data?.message || e?.message || 'Error al cargar radicados');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [expedienteId]);
+
+  const msg = (text, type = 'success') => { setNotice({ text, type }); setTimeout(() => setNotice(null), 3500); };
+
+  const handleCreate = async () => {
+    if (!form.organismo || !form.numero_radicado.trim()) { msg('Organismo y número de radicado son obligatorios', 'danger'); return; }
+    try {
+      await createRadicadoPublico(expedienteId, { organismo: form.organismo, numero_radicado: form.numero_radicado.trim() });
+      await load();
+      setShowCreate(false); setForm(EMPTY_RADICADO); msg('Radicado agregado');
+    } catch (e) { msg(e?.response?.data?.message || e?.message || 'Error', 'danger'); }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await deleteRadicadoPublico(expedienteId, target.id);
+      setItems((p) => p.filter((r) => r.id !== target.id));
+      setShowDelete(false); msg('Radicado eliminado');
+    } catch (e) { msg(e?.response?.data?.message || e?.message || 'Error', 'danger'); }
+  };
+
+  return (
+    <div>
+      {notice && <TabNotice notice={notice} />}
+      <p style={{ fontSize: 13, color: '#9fb3cc', marginTop: 0, marginBottom: 16 }}>
+        Cada radicado que agregues aquí aparece automáticamente en el checklist diario de "Consultas externas" para que no se le pase revisarlo.
+      </p>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        {canEdit && <button className="btn btn-primary" onClick={() => { setForm(EMPTY_RADICADO); setShowCreate(true); }} style={{ fontSize: 13, padding: '8px 16px' }}>➕ Nuevo Radicado</button>}
+      </div>
+      {error && <div style={{ color: '#fca5a5', fontSize: 13, marginBottom: 12 }}>⚠️ {error}</div>}
+      {loading ? (
+        <div style={{ color: '#9fb3cc', textAlign: 'center', padding: 40 }}>Cargando radicados...</div>
+      ) : items.length === 0 ? (
+        <div style={{ color: '#9fb3cc', textAlign: 'center', padding: 40 }}>
+          Sin radicados públicos registrados — este expediente no aparecerá en el checklist de Consultas externas hasta que agregues al menos uno.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {items.map((r) => (
+            <div key={r.id} style={{ background: 'linear-gradient(135deg, #2a3a51, #1e2a3a)', border: `1px solid ${borderCol}`, borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.3)', fontWeight: 600, marginRight: 10 }}>
+                  {r.organismo}
+                </span>
+                <span style={{ fontSize: 14, color: '#e2e8f0' }}>{r.numero_radicado}</span>
+              </div>
+              {canEdit && (
+                <button onClick={() => { setTarget(r); setShowDelete(true); }} style={{ padding: '4px 8px', background: '#ef4444', border: 'none', borderRadius: 6, color: 'white', fontSize: 11, cursor: 'pointer' }}>🗑️</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <Modal show={showCreate} onClose={() => setShowCreate(false)} title="➕ Nuevo Radicado Público">
+        <RadicadoPublicoForm f={form} onF={setForm} />
+        <ModalFooter onCancel={() => setShowCreate(false)} onConfirm={handleCreate} confirmLabel="Agregar" />
+      </Modal>
+      <DeleteModal show={showDelete && !!target} onClose={() => setShowDelete(false)} onConfirm={handleDelete} label={target?.numero_radicado} />
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
-const TABS = ['Actuaciones', 'Audiencias', 'Etapas', 'Tareas', 'Documentos'];
+const TABS = ['Actuaciones', 'Audiencias', 'Etapas', 'Tareas', 'Documentos', 'Radicados'];
 
 export default function ExpedienteDetalle() {
   const { id } = useParams();
@@ -759,6 +862,7 @@ export default function ExpedienteDetalle() {
             {activeTab === 'Etapas' && <EtapasTab expedienteId={id} canEdit={canEdit} />}
             {activeTab === 'Tareas' && <TareasTab expedienteId={id} canEdit={canEdit} />}
             {activeTab === 'Documentos' && <DocumentosTab expedienteId={id} canEdit={canEdit} />}
+            {activeTab === 'Radicados' && <RadicadosPublicosTab expedienteId={id} canEdit={canEdit} />}
           </>
         ) : null}
       </div>

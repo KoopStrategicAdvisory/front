@@ -45,3 +45,21 @@ export async function deleteEtapa(expedienteId, etapaId) {
   const response = await api.delete(`/expedientes/${expedienteId}/etapas/${etapaId}`);
   return response.data;
 }
+
+// Radicados publicos: un mismo expediente puede tener varios, uno por cada
+// organismo externo donde exista (Rama Judicial, Fiscalia, Publicaciones
+// Procesales, SIUGJ, SuperFinanciera...).
+export async function listRadicadosPublicos(expedienteId) {
+  const response = await api.get(`/expedientes/${expedienteId}/radicados-publicos`);
+  return response.data;
+}
+
+export async function createRadicadoPublico(expedienteId, data) {
+  const response = await api.post(`/expedientes/${expedienteId}/radicados-publicos`, data);
+  return response.data;
+}
+
+export async function deleteRadicadoPublico(expedienteId, radicadoId) {
+  const response = await api.delete(`/expedientes/${expedienteId}/radicados-publicos/${radicadoId}`);
+  return response.data;
+}
