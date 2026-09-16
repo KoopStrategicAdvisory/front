@@ -5,6 +5,7 @@ import {
   downloadConsultationPdf,
   listConsultationLogs,
   listRadicadosActivos,
+  verificarRamaJudicial,
 } from '../../../api/consultas';
 import { listExpedientes, listRadicadosPublicos, createRadicadoPublico } from '../../../api/expedientes';
 import { Modal } from '../../../components/common/Modal';
@@ -53,6 +54,7 @@ export default function ConsultasPage() {
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [message, setMessage] = useState(null);
+  const [verificandoRama, setVerificandoRama] = useState(false);
 
   const isAdminOrLawyer = useMemo(() => {
     const roles = Array.isArray(user?.roles) ? user.roles : [user?.roles];
@@ -98,15 +100,39 @@ export default function ConsultasPage() {
 
   useEffect(() => { if (selectedDate) { loadRadicados(); loadRecords(); } }, [selectedDate]);
 
+  // Dispara ahora mismo el mismo chequeo que corre solo cada dia a las 6am:
+  // busca cada radicado de Rama Judicial en el portal publico (sin captcha)
+  // y actualiza cual tuvo actuacion nueva desde la ultima vez que se reviso.
+  const handleVerificarRama = async () => {
+    setVerificandoRama(true);
+    setMessage(null);
+    try {
+      const r = await verificarRamaJudicial();
+      loadRadicados();
+      const texto = r.novedades > 0
+        ? `Se encontraron ${r.novedades} radicado${r.novedades === 1 ? '' : 's'} con actuación nueva de ${r.revisados} revisados en Rama Judicial.`
+        : `Se revisaron ${r.revisados} radicados en Rama Judicial — sin novedades.`;
+      setMessage({ type: 'success', text: texto + (r.errores.length ? ` (${r.errores.length} no se pudieron consultar)` : '') });
+    } catch (err) {
+      setMessage({ type: 'error', text: err?.response?.data?.message || 'No se pudo verificar Rama Judicial.' });
+    } finally {
+      setVerificandoRama(false);
+    }
+  };
+
+  // Si el verificador automatico ya encontro una actuacion nueva para este
+  // radicado, se precarga el formulario con eso — el abogado solo confirma
+  // o ajusta en vez de escribir todo desde cero.
   const openFromChecklist = (item) => {
     setFormMode('checklist');
+    const hayNovedadAutomatica = !!item.ultima_actuacion_texto;
     setForm({
       id_expediente: item.id_expediente,
       id_radicado_publico: item.id_radicado_publico,
       numero_radicado: item.numero_radicado,
       organismo: item.organismo,
-      resultado: 'sin_movimiento',
-      observacion: '',
+      resultado: hayNovedadAutomatica ? 'actuacion_nueva' : 'sin_movimiento',
+      observacion: hayNovedadAutomatica ? `Detectado automáticamente (Rama Judicial): ${item.ultima_actuacion_texto}` : '',
     });
     setShowForm(true);
   };
@@ -266,17 +292,22 @@ export default function ConsultasPage() {
 
         {/* Checklist del día */}
         <div className="dash-item" style={{ marginTop: 16 }}>
-          <div className="koop-section-head" style={{ justifyContent: 'space-between' }}>
+          <div className="koop-section-head" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span className="koop-section-icon" aria-hidden="true">✅</span>
               <span className="koop-section-title">Checklist de hoy</span>
             </div>
-            <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-              {radicadosLoading ? 'Cargando…' : `${revisados.length} de ${radicados.length} revisados`}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={handleVerificarRama} disabled={verificandoRama}>
+                {verificandoRama ? 'Verificando…' : '🤖 Verificar Rama Judicial ahora'}
+              </button>
+              <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                {radicadosLoading ? 'Cargando…' : `${revisados.length} de ${radicados.length} revisados`}
+              </span>
+            </div>
           </div>
           <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-muted)' }}>
-            Un mismo expediente puede aparecer varias veces si tiene radicado en más de un organismo (Rama Judicial, Fiscalía, etc.) — cada uno se revisa por separado.
+            Un mismo expediente puede aparecer varias veces si tiene radicado en más de un organismo (Rama Judicial, Fiscalía, etc.) — cada uno se revisa por separado. Los de Rama Judicial también se verifican solos todos los días a las 6:00 a.m.
           </p>
 
           {radicadosLoading ? (
@@ -310,6 +341,12 @@ export default function ConsultasPage() {
                         </span>
                         <span>Radicado: {item.numero_radicado}</span>
                       </div>
+                      {!done && item.ultima_actuacion_texto && (
+                        <div style={{ marginTop: 6, fontSize: 12, color: '#f6cd72', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                          <span>🤖</span>
+                          <span>Detectado automáticamente: {item.ultima_actuacion_texto}</span>
+                        </div>
+                      )}
                     </div>
                     {done ? (
                       <span style={{ fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 999, background: badge.bg, color: badge.fg, border: `1px solid ${badge.border}`, whiteSpace: 'nowrap' }}>

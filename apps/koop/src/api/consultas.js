@@ -21,6 +21,14 @@ export async function createConsultationLog(payload) {
   return data;
 }
 
+// Dispara ahora mismo la verificacion automatica contra la API publica de
+// Rama Judicial (sin captcha) para todos los radicados de ese organismo —
+// el mismo chequeo que corre solo cada dia a las 6am.
+export async function verificarRamaJudicial() {
+  const { data } = await api.post('/consultas-externas/verificar-rama-judicial');
+  return data;
+}
+
 export async function downloadConsultationPdf(fecha) {
   const { data } = await api.get(`/consultas-externas/pdf${fecha ? `?fecha=${encodeURIComponent(fecha)}` : ''}`, {
     responseType: 'blob',
