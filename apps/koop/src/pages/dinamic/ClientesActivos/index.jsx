@@ -18,6 +18,24 @@ const EMPTY_CLIENT_FORM = {
   telefono: '',
 };
 
+// wa.me exige el numero completo con indicativo de pais, sin espacios ni
+// simbolos — los celulares se guardan como numero local colombiano (10
+// digitos), asi que se les antepone el 57 si no lo traen ya.
+function toWhatsAppDigits(telefono) {
+  const digits = String(telefono || '').replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.length === 10) return `57${digits}`;
+  return digits;
+}
+
+function whatsappHref(cliente) {
+  const numero = toWhatsAppDigits(cliente.telefono);
+  if (!numero) return null;
+  const primerNombre = String(cliente.nombre || '').trim().split(/\s+/)[0] || '';
+  const mensaje = `Hola ${primerNombre}, te escribo con el objetivo de comentarte un tema referente a tu proceso.`;
+  return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
+}
+
 const TIPO_PERSONA_OPTIONS = [
   { value: 'NATURAL', label: 'Persona natural' },
   { value: 'JURIDICA', label: 'Persona jurídica' },
@@ -351,7 +369,20 @@ export default function ClientesActivos() {
                     </td>
                     <td>{c.email || '-'}</td>
                     <td>{c.numero_documento || '-'}</td>
-                    <td>{c.telefono || '-'}</td>
+                    <td>
+                      {c.telefono ? (
+                        <a
+                          href={whatsappHref(c)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: '#67e8f9', textDecoration: 'none' }}
+                          title="Enviar WhatsApp"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          💬 {c.telefono}
+                        </a>
+                      ) : '-'}
+                    </td>
                     <td>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                         <button className="btn btn-primary btn-sm" onClick={() => onEdit(c)}>Editar</button>
@@ -417,7 +448,16 @@ export default function ClientesActivos() {
                   <div className="mobile-item-details">
                     <div className="kv"><span>Email</span><div>{c.email || '-'}</div></div>
                     <div className="kv" style={{ marginTop: 6 }}><span>Documento</span><div>{c.numero_documento || '-'}</div></div>
-                    <div className="kv" style={{ marginTop: 6 }}><span>Celular</span><div>{c.telefono || '-'}</div></div>
+                    <div className="kv" style={{ marginTop: 6 }}>
+                      <span>Celular</span>
+                      <div>
+                        {c.telefono ? (
+                          <a href={whatsappHref(c)} target="_blank" rel="noopener noreferrer" style={{ color: '#67e8f9', textDecoration: 'none' }} title="Enviar WhatsApp">
+                            💬 {c.telefono}
+                          </a>
+                        ) : '-'}
+                      </div>
+                    </div>
                     <h4 style={{ margin: '14px 0 8px', color: '#e2e8f0', fontSize: 14 }}>Expedientes</h4>
                     <ClientExpedientesList
                       clienteId={c.id}
