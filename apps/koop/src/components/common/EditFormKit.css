@@ -171,3 +171,32 @@
   align-items: center;
   gap: 6px;
 }
+
+/* Lista de varios archivos seleccionados (subida masiva) — cada uno con su
+   propio boton para quitarlo antes de subir. */
+.kf-file-selected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.kf-file-selected-list .kf-file-selected {
+  margin-top: 0;
+  justify-content: space-between;
+  background: rgba(103, 232, 249, 0.06);
+  border: 1px solid rgba(103, 232, 249, 0.15);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.kf-file-remove {
+  background: none;
+  border: none;
+  color: #f87171;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}

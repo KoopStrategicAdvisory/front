@@ -5,7 +5,7 @@ import { useActuaciones } from '../../../hooks/useActuaciones';
 import { useAudiencias } from '../../../hooks/useAudiencias';
 import { useTareasKoop } from '../../../hooks/useTareasKoop';
 import { useDocumentosExpediente } from '../../../hooks/useDocumentosExpediente';
-import { getDownloadUrl } from '../../../api/documentosExpediente';
+import { getDownloadUrl, createDocumentosBulk } from '../../../api/documentosExpediente';
 import { useAccess } from '../../../context/AccessContext';
 import { createEtapa, updateEtapa, deleteEtapa, generarEtapas, listRadicadosPublicos, createRadicadoPublico, deleteRadicadoPublico } from '../../../api/expedientes';
 import { listEstadosTarea, listPrioridades, listTiposActuacion, listEstadosEtapa, listEtapasProcesales, listTiposDocumento, listEstadosProceso } from '../../../api/catalogos';
@@ -583,7 +583,7 @@ function Badge({ color, children }) {
 // previsualizacion, sin edicion (aunque el backend ya soportaba PUT completo),
 // sin busqueda/filtro, y todos los archivos se veian identicos (mismo icono
 // generico) en una lista angosta de una sola columna.
-const EMPTY_DOCUMENTO = { file: null, titulo: '', id_tipo_documento: '', descripcion: '', fecha_documento: '', visibilidad_cliente: false };
+const EMPTY_DOCUMENTO = { files: [], id_tipo_documento: '', descripcion: '', fecha_documento: '', visibilidad_cliente: false };
 const EMPTY_EDIT_DOCUMENTO = { titulo: '', id_tipo_documento: '', descripcion: '', fecha_documento: '', visibilidad_cliente: false };
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
@@ -600,30 +600,37 @@ function iconBtnStyle(color) {
 
 // showFile=false para el formulario de edicion: el archivo en si no se
 // reemplaza (subir uno nuevo es, en la practica, otro documento con su
-// propia version/fecha), solo su metadata.
+// propia version/fecha), solo su metadata. En creacion (showFile=true) se
+// pueden elegir varios archivos a la vez — cada uno queda como su propio
+// documento con el nombre de archivo como titulo, asi que el campo "Título"
+// solo tiene sentido al editar un documento ya existente (uno a la vez).
 function DocumentoForm({ f, onF, tipoDocumentoOpts, showFile = true }) {
   return (
     <EditForm style={{ marginTop: 8 }}>
       {showFile && (
         <EditFileField
-          label="Archivo *"
-          file={f.file}
-          onChange={(e) => onF({ ...f, file: e.target.files?.[0] || null, titulo: f.titulo || e.target.files?.[0]?.name || '' })}
+          label="Archivo(s) *"
+          files={f.files}
+          onFilesChange={(files) => onF({ ...f, files })}
+          onRemove={(i) => onF({ ...f, files: f.files.filter((_, idx) => idx !== i) })}
+          multiple
         />
       )}
-      <EditField label="Título" value={f.titulo} onChange={(e) => onF({ ...f, titulo: e.target.value })} placeholder="Auto admisorio - notificación" />
+      {!showFile && (
+        <EditField label="Título" value={f.titulo} onChange={(e) => onF({ ...f, titulo: e.target.value })} placeholder="Auto admisorio - notificación" />
+      )}
       <EditRow cols={2}>
         <EditSelect label="Tipo de documento *" value={f.id_tipo_documento} onChange={(e) => onF({ ...f, id_tipo_documento: e.target.value })} options={tipoDocumentoOpts} />
         <EditField label="Fecha del documento" type="date" value={f.fecha_documento} onChange={(e) => onF({ ...f, fecha_documento: e.target.value })} />
       </EditRow>
-      <EditTextArea label="Descripción" value={f.descripcion} onChange={(e) => onF({ ...f, descripcion: e.target.value })} rows={2} placeholder="Notas sobre el documento..." />
+      <EditTextArea label="Descripción" value={f.descripcion} onChange={(e) => onF({ ...f, descripcion: e.target.value })} rows={2} placeholder={showFile ? 'Notas compartidas por todos los archivos...' : 'Notas sobre el documento...'} />
       <EditCheckbox label="Visible para el cliente" checked={f.visibilidad_cliente} onChange={(e) => onF({ ...f, visibilidad_cliente: e.target.checked })} />
     </EditForm>
   );
 }
 
 function DocumentosTab({ expedienteId, canEdit }) {
-  const { documentos, loading, error, fetchDocumentos, createDocumento, updateDocumento, deleteDocumento } = useDocumentosExpediente();
+  const { documentos, loading, error, fetchDocumentos, updateDocumento, deleteDocumento } = useDocumentosExpediente();
   const [tiposDocumento, setTiposDocumento] = useState([]);
   const [search, setSearch] = useState('');
   const [tipoFilter, setTipoFilter] = useState('');
@@ -677,25 +684,35 @@ function DocumentosTab({ expedienteId, canEdit }) {
   });
 
   const handleUpload = async () => {
-    if (!form.file) { msg('Selecciona un archivo', 'danger'); return; }
+    if (!form.files.length) { msg('Selecciona al menos un archivo', 'danger'); return; }
     if (!form.id_tipo_documento) { msg('El tipo de documento es obligatorio', 'danger'); return; }
-    if (form.file.size > MAX_FILE_BYTES) { msg('El archivo supera el límite de 25 MB', 'danger'); return; }
+    const tooLarge = form.files.find((file) => file.size > MAX_FILE_BYTES);
+    if (tooLarge) { msg(`"${tooLarge.name}" supera el límite de 25 MB`, 'danger'); return; }
     setUploading(true);
     setUploadProgress(0);
     try {
-      await createDocumento({
-        file: form.file,
+      const { creados = [], errores = [] } = await createDocumentosBulk({
+        files: form.files,
         id_expediente: expedienteId,
         id_tipo_documento: Number(form.id_tipo_documento),
-        titulo: form.titulo || undefined,
         descripcion: form.descripcion || undefined,
         fecha_documento: form.fecha_documento || undefined,
         visibilidad_cliente: form.visibilidad_cliente,
       }, setUploadProgress);
-      setShowUpload(false); setForm(EMPTY_DOCUMENTO);
-      msg('Documento subido exitosamente');
+      await load();
+      if (errores.length === 0) {
+        setShowUpload(false); setForm(EMPTY_DOCUMENTO);
+        msg(`${creados.length} documento${creados.length === 1 ? '' : 's'} subido${creados.length === 1 ? '' : 's'} exitosamente`);
+      } else if (creados.length === 0) {
+        msg(`No se pudo subir ningún archivo: ${errores.map((e) => e.nombre_archivo).join(', ')}`, 'danger');
+      } else {
+        // Deja en el formulario solo los que fallaron, para no obligar a
+        // volver a elegir todo el lote si la mayoria si subio bien.
+        setForm((prev) => ({ ...prev, files: prev.files.filter((f) => errores.some((e) => e.nombre_archivo === f.name)) }));
+        msg(`${creados.length} subidos, ${errores.length} fallaron: ${errores.map((e) => e.nombre_archivo).join(', ')}`, 'danger');
+      }
     } catch (e) {
-      msg(e?.response?.data?.message || e?.message || 'Error al subir documento', 'danger');
+      msg(e?.response?.data?.message || e?.message || 'Error al subir documentos', 'danger');
     } finally {
       setUploading(false);
       setUploadProgress(null);
@@ -784,7 +801,7 @@ function DocumentosTab({ expedienteId, canEdit }) {
           <option value="">Todos los tipos</option>
           {tiposDocumento.map((t) => <option key={t.id} value={String(t.id)}>{t.nombre}</option>)}
         </select>
-        {canEdit && <button className="btn btn-primary" onClick={() => { setForm(EMPTY_DOCUMENTO); setShowUpload(true); }} style={{ fontSize: 13, padding: '10px 16px', whiteSpace: 'nowrap' }}>📤 Subir Documento</button>}
+        {canEdit && <button className="btn btn-primary" onClick={() => { setForm(EMPTY_DOCUMENTO); setShowUpload(true); }} style={{ fontSize: 13, padding: '10px 16px', whiteSpace: 'nowrap' }}>📤 Subir Documentos</button>}
       </div>
       {error && <div style={{ color: '#fca5a5', fontSize: 13, marginBottom: 12 }}>⚠️ {error}</div>}
       {loading && documentos.length === 0 ? (
@@ -842,7 +859,7 @@ function DocumentosTab({ expedienteId, canEdit }) {
         </div>
       )}
 
-      <Modal show={showUpload} onClose={() => setShowUpload(false)} title="📤 Subir Documento">
+      <Modal show={showUpload} onClose={() => setShowUpload(false)} title="📤 Subir Documentos">
         <DocumentoForm f={form} onF={setForm} tipoDocumentoOpts={tipoDocumentoOpts} />
         {uploading && (
           <div style={{ marginTop: 16 }}>
@@ -854,7 +871,9 @@ function DocumentosTab({ expedienteId, canEdit }) {
         )}
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
           <button className="btn btn-secondary" onClick={() => setShowUpload(false)} style={{ padding: '10px 20px' }} disabled={uploading}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleUpload} style={{ padding: '10px 20px' }} disabled={uploading}>{uploading ? 'Subiendo...' : 'Subir'}</button>
+          <button className="btn btn-primary" onClick={handleUpload} style={{ padding: '10px 20px' }} disabled={uploading}>
+            {uploading ? 'Subiendo...' : form.files.length ? `Subir ${form.files.length} documento${form.files.length === 1 ? '' : 's'}` : 'Subir'}
+          </button>
         </div>
       </Modal>
 

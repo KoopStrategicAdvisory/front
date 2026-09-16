@@ -32,6 +32,26 @@ export async function createDocumento(data, onUploadProgress) {
   return response.data;
 }
 
+// Subida en lote: mismos campos que createDocumento pero con `files` (array)
+// en vez de `file` — todos comparten tipo/descripcion/fecha/visibilidad, cada
+// uno guarda su propio titulo (el nombre del archivo). Devuelve
+// { creados, errores } porque un archivo suelto puede fallar sin tumbar el
+// resto del lote que ya subio bien.
+export async function createDocumentosBulk(data, onUploadProgress) {
+  const { files, ...fields } = data;
+  const form = new FormData();
+  (files || []).forEach((file) => form.append('files', file));
+  Object.entries(fields).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') form.append(key, value);
+  });
+  const response = await api.post('/documentos/bulk', form, {
+    onUploadProgress: onUploadProgress
+      ? (evt) => onUploadProgress(evt.total ? Math.round((evt.loaded / evt.total) * 100) : null)
+      : undefined,
+  });
+  return response.data;
+}
+
 export async function updateDocumento(id, data) {
   const response = await api.put(`/documentos/${id}`, data);
   return response.data;

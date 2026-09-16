@@ -81,14 +81,22 @@ export function EditCheckbox({ label, checked, onChange }) {
   );
 }
 
+function fmtFileSize(bytes) {
+  return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 // Zona de carga de archivo con estilo de "dropzone" — arrastrar y soltar de
 // verdad (antes solo se veia como dropzone pero solo funcionaba el click).
-export function EditFileField({ label, file, onChange, accept, helperText = 'Haz clic o arrastra un archivo aquí' }) {
+// `multiple` permite seleccionar/soltar varios archivos a la vez (subida
+// masiva de documentos) — `files` es siempre un array, incluso con un solo
+// archivo, para no tener dos formas distintas de leer la selección.
+export function EditFileField({ label, files = [], onFilesChange, onRemove, accept, helperText, multiple = false }) {
   const [dragging, setDragging] = useState(false);
 
-  const setFile = (f) => {
-    if (!f) return;
-    onChange({ target: { files: [f] } });
+  const addFiles = (fileList) => {
+    const incoming = Array.from(fileList || []);
+    if (!incoming.length) return;
+    onFilesChange(multiple ? [...files, ...incoming] : incoming.slice(0, 1));
   };
 
   return (
@@ -101,19 +109,26 @@ export function EditFileField({ label, file, onChange, accept, helperText = 'Haz
         onDrop={(e) => {
           e.preventDefault();
           setDragging(false);
-          setFile(e.dataTransfer.files?.[0]);
+          addFiles(e.dataTransfer.files);
         }}
       >
         <span className="kf-file-drop-icon">📎</span>
         <span className="kf-file-drop-text">
-          <strong>Selecciona un archivo</strong> — {helperText}
+          <strong>Selecciona {multiple ? 'uno o varios archivos' : 'un archivo'}</strong> — {helperText || (multiple ? 'haz clic o arrastra varios archivos aquí' : 'haz clic o arrastra un archivo aquí')}
         </span>
-        <input type="file" accept={accept} onChange={onChange} />
+        <input type="file" accept={accept} multiple={multiple} onChange={(e) => addFiles(e.target.files)} />
       </div>
-      {file && (
-        <span className="kf-file-selected">
-          📄 {file.name} · {file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} KB` : `${(file.size / (1024 * 1024)).toFixed(1)} MB`}
-        </span>
+      {files.length > 0 && (
+        <div className="kf-file-selected-list">
+          {files.map((f, i) => (
+            <span key={`${f.name}-${f.size}-${i}`} className="kf-file-selected">
+              <span>📄 {f.name} · {fmtFileSize(f.size)}</span>
+              {onRemove && (
+                <button type="button" className="kf-file-remove" onClick={() => onRemove(i)} title="Quitar">✕</button>
+              )}
+            </span>
+          ))}
+        </div>
       )}
     </label>
   );
