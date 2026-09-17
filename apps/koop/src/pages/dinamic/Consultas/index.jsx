@@ -28,6 +28,12 @@ const RESULT_BADGE_COLOR = {
   termino_corriendo: { bg: 'rgba(239,68,68,0.14)', fg: '#fca5a5', border: 'rgba(239,68,68,0.28)' },
 };
 
+// Unico organismo que hoy se verifica solo (ver services/verificarRamaJudicial
+// en el backend) — el resto (Fiscalía, SIUGJ, SuperFinanciera...) pide
+// captcha o login y toca revisarlo a mano en su propio portal.
+const RAMA_JUDICIAL_LABEL = 'Consulta de procesos Rama Judicial';
+const PORTAL_URL_BY_ORGANISMO = Object.fromEntries(CONSULTATION_PORTALS.map((p) => [p.label, p.url]));
+
 // OJO: no usar toISOString() aquí — convierte a UTC, y Bogotá es UTC-5. Una
 // revisión hecha a las 8pm o más tarde quedaba fechada al día SIGUIENTE
 // (ya era el día siguiente en UTC), así que "Registros de hoy" mostraba
@@ -91,6 +97,12 @@ export default function ConsultasPage() {
 
   const pendientes = useMemo(() => radicados.filter((r) => !r.ultima_consulta_hoy_id), [radicados]);
   const revisados = useMemo(() => radicados.filter((r) => r.ultima_consulta_hoy_id), [radicados]);
+  // Rama Judicial se verifica sola — se muestra compacto, con confirmar en un
+  // clic. Todo lo demas (Fiscalía, SIUGJ...) no se puede automatizar todavia
+  // y necesita la atención completa del abogado, con acceso directo al
+  // portal y al radicado listo para copiar.
+  const ramaItems = useMemo(() => [...pendientes, ...revisados].filter((r) => r.organismo === RAMA_JUDICIAL_LABEL), [pendientes, revisados]);
+  const manualItems = useMemo(() => [...pendientes, ...revisados].filter((r) => r.organismo !== RAMA_JUDICIAL_LABEL), [pendientes, revisados]);
 
   const loadRadicados = () => {
     setRadicadosLoading(true);
@@ -147,6 +159,43 @@ export default function ConsultasPage() {
     setShowForm(true);
   };
 
+  // Confirmar en un clic para lo que ya verificó Rama Judicial sola — sin
+  // abrir el formulario completo. Si quiere ajustar algo, igual puede abrir
+  // el formulario con el lápiz.
+  const handleConfirmarRapido = async (item) => {
+    setMessage(null);
+    try {
+      const hayNovedad = !!item.ultima_actuacion_texto;
+      await createConsultationLog({
+        id_expediente: item.id_expediente,
+        id_radicado_publico: item.id_radicado_publico,
+        numero_radicado: item.numero_radicado,
+        portal_consultado: item.organismo,
+        resultado: hayNovedad ? 'actuacion_nueva' : 'sin_movimiento',
+        observacion: hayNovedad ? `Detectado automáticamente (Rama Judicial): ${item.ultima_actuacion_texto}` : undefined,
+        fecha_consulta: selectedDate,
+      });
+      loadRadicados();
+      loadRecords();
+    } catch (err) {
+      setMessage({ type: 'error', text: err?.response?.data?.message || 'No se pudo confirmar el registro.' });
+    }
+  };
+
+  const handleAbrirPortal = (organismo) => {
+    const url = PORTAL_URL_BY_ORGANISMO[organismo];
+    if (url) window.open(url, '_blank', 'noopener');
+  };
+
+  const handleCopiarRadicado = async (numero) => {
+    try {
+      await navigator.clipboard.writeText(numero);
+      setMessage({ type: 'success', text: `Radicado ${numero} copiado.` });
+    } catch {
+      setMessage({ type: 'error', text: 'No se pudo copiar el radicado — cópialo manualmente.' });
+    }
+  };
+
   const openManual = () => {
     setFormMode('manual');
     setForm(EMPTY_FORM);
@@ -172,7 +221,16 @@ export default function ConsultasPage() {
       .then((data) => {
         const items = Array.isArray(data.items) ? data.items : [];
         setExpRadicados(items);
-        if (items.length === 0) setShowNewRadicado(true);
+        if (items.length === 0) {
+          // Este expediente todavía no tiene radicado público — es el único
+          // caso donde de verdad hace falta escribirlo, porque el dato no existe.
+          setShowNewRadicado(true);
+        } else if (items.length === 1) {
+          // Ya sabemos cuál es — no tiene sentido hacer elegir en un select
+          // de una sola opción. Queda fijo, igual que en el modo checklist.
+          const only = items[0];
+          setForm((f) => ({ ...f, id_radicado_publico: only.id, numero_radicado: only.numero_radicado, organismo: only.organismo }));
+        }
       })
       .catch(() => setMessage({ type: 'error', text: 'No se pudieron cargar los radicados de ese expediente.' }))
       .finally(() => setExpRadicadosLoading(false));
@@ -313,6 +371,24 @@ export default function ConsultasPage() {
           </div>
         )}
 
+        {/* Registro de revisión de expediente: arriba y a mano, para lo que
+            no salió hoy en el checklist automático, o para un expediente que
+            aún no tiene radicado público registrado. */}
+        <div className="dash-item" style={{ marginTop: 16 }}>
+          <div className="koop-section-head" style={{ justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span className="koop-section-icon" aria-hidden="true">✍️</span>
+              <span className="koop-section-title">Registro de revisión de expediente</span>
+            </div>
+            <button type="button" className="btn btn-gold btn-sm" onClick={openManual}>
+              + Elegir expediente
+            </button>
+          </div>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
+            Es la misma revisión diaria del checklist de abajo, pero eligiendo tú el expediente — para uno que no salió hoy en el checklist, o que todavía no tiene radicado público registrado (lo puedes agregar en el momento).
+          </p>
+        </div>
+
         {/* Checklist del día */}
         <div className="dash-item" style={{ marginTop: 16 }}>
           <div className="koop-section-head" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
@@ -320,70 +396,136 @@ export default function ConsultasPage() {
               <span className="koop-section-icon" aria-hidden="true">✅</span>
               <span className="koop-section-title">Checklist de hoy</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={handleVerificarRama} disabled={verificandoRama}>
-                {verificandoRama ? 'Verificando…' : '🤖 Verificar Rama Judicial ahora'}
-              </button>
-              <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                {radicadosLoading ? 'Cargando…' : `${revisados.length} de ${radicados.length} revisados`}
-              </span>
-            </div>
+            <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+              {radicadosLoading ? 'Cargando…' : `${revisados.length} de ${radicados.length} revisados`}
+            </span>
           </div>
-          <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-muted)' }}>
-            Un mismo expediente puede aparecer varias veces si tiene radicado en más de un organismo (Rama Judicial, Fiscalía, etc.) — cada uno se revisa por separado. Los de Rama Judicial también se verifican solos todos los días a las 6:00 a.m.
-          </p>
 
           {radicadosLoading ? (
             <div style={{ color: 'var(--text-secondary)', padding: '12px 0' }}>Cargando radicados activos...</div>
           ) : radicados.length === 0 ? (
             <div style={{ color: 'var(--text-secondary)', padding: '12px 0' }}>
-              Ningún expediente activo tiene todavía un radicado público registrado. Usa "Registro manual" para agregar el primero.
+              Ningún expediente activo tiene todavía un radicado público registrado. Usa "Registro de revisión de expediente" para agregar el primero.
             </div>
           ) : (
-            <div style={{ display: 'grid', gap: 10, marginTop: 4 }}>
-              {[...pendientes, ...revisados].map((item) => {
-                const done = !!item.ultima_consulta_hoy_id;
-                const badge = done ? RESULT_BADGE_COLOR[item.ultimo_resultado_hoy] || RESULT_BADGE_COLOR.sin_movimiento : null;
-                return (
-                  <div
-                    key={item.id_radicado_publico}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
-                      padding: '12px 14px', borderRadius: 12,
-                      background: done ? 'rgba(52,211,153,0.05)' : 'linear-gradient(180deg, var(--surface-3), var(--surface-2))',
-                      border: `1px solid ${done ? 'rgba(52,211,153,0.22)' : borderCol}`,
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>
-                        {item.nombre_cliente || 'Sin cliente'} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {item.numero_de_expediente}</span>
-                      </div>
-                      <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(99,102,241,0.14)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)' }}>
-                          {item.organismo}
-                        </span>
-                        <span>Radicado: {item.numero_radicado}</span>
-                      </div>
-                      {!done && item.ultima_actuacion_texto && (
-                        <div style={{ marginTop: 6, fontSize: 12, color: '#f6cd72', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                          <span>🤖</span>
-                          <span>Detectado automáticamente: {item.ultima_actuacion_texto}</span>
-                        </div>
-                      )}
-                    </div>
-                    {done ? (
-                      <span style={{ fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 999, background: badge.bg, color: badge.fg, border: `1px solid ${badge.border}`, whiteSpace: 'nowrap' }}>
-                        ✓ {RESULT_LABEL[item.ultimo_resultado_hoy] || 'Revisado'}
-                      </span>
-                    ) : (
-                      <button type="button" className="btn btn-gold btn-sm" onClick={() => openFromChecklist(item)}>
-                        Marcar revisado
-                      </button>
-                    )}
+            <>
+              {/* Rama Judicial: se verifica sola, así que se muestra compacto */}
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    🤖 Rama Judicial <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>— se verifica sola todos los días a las 6:00 a.m.</span>
                   </div>
-                );
-              })}
-            </div>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={handleVerificarRama} disabled={verificandoRama}>
+                    {verificandoRama ? 'Verificando…' : 'Verificar ahora'}
+                  </button>
+                </div>
+                {ramaItems.length === 0 ? (
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '4px 0 0' }}>Ningún radicado de Rama Judicial registrado todavía.</div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {ramaItems.map((item) => {
+                      const done = !!item.ultima_consulta_hoy_id;
+                      const hayNovedad = !done && !!item.ultima_actuacion_texto;
+                      return (
+                        <div
+                          key={item.id_radicado_publico}
+                          style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
+                            padding: '8px 12px', borderRadius: 10,
+                            background: done ? 'rgba(52,211,153,0.04)' : hayNovedad ? 'rgba(240,185,66,0.05)' : 'var(--surface-2)',
+                            border: `1px solid ${done ? 'rgba(52,211,153,0.18)' : hayNovedad ? 'rgba(240,185,66,0.25)' : borderCol}`,
+                          }}
+                        >
+                          <div style={{ minWidth: 0, fontSize: 13 }}>
+                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.nombre_cliente || 'Sin cliente'}</span>
+                            <span style={{ color: 'var(--text-muted)' }}> · {item.numero_de_expediente} · Radicado: {item.numero_radicado}</span>
+                            {hayNovedad && (
+                              <div style={{ marginTop: 2, color: '#f6cd72', fontSize: 12 }}>Detectado: {item.ultima_actuacion_texto}</div>
+                            )}
+                            {!hayNovedad && !done && item.ultima_verificacion_automatica && (
+                              <span style={{ color: '#67e8f9', fontSize: 12 }}> — sin novedad</span>
+                            )}
+                          </div>
+                          {done ? (() => {
+                            const badge = RESULT_BADGE_COLOR[item.ultimo_resultado_hoy] || RESULT_BADGE_COLOR.sin_movimiento;
+                            return (
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap', background: badge.bg, color: badge.fg, border: `1px solid ${badge.border}` }}>
+                                ✓ {RESULT_LABEL[item.ultimo_resultado_hoy] || 'Revisado'}
+                              </span>
+                            );
+                          })() : (
+                            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                              <button type="button" className="btn btn-gold btn-sm" onClick={() => handleConfirmarRapido(item)}>✓ Confirmar</button>
+                              <button type="button" className="btn btn-secondary btn-sm" onClick={() => openFromChecklist(item)} title="Editar antes de confirmar">✏️</button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Todo lo demás: no se puede automatizar, necesita revisión manual */}
+              {manualItems.length > 0 && (
+                <div style={{ marginTop: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
+                    ✍️ Revisión manual <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>— pide login o captcha, toca revisarlo tú</span>
+                  </div>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {manualItems.map((item) => {
+                      const done = !!item.ultima_consulta_hoy_id;
+                      const badge = done ? RESULT_BADGE_COLOR[item.ultimo_resultado_hoy] || RESULT_BADGE_COLOR.sin_movimiento : null;
+                      const portalUrl = PORTAL_URL_BY_ORGANISMO[item.organismo];
+                      return (
+                        <div
+                          key={item.id_radicado_publico}
+                          style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+                            padding: '12px 14px', borderRadius: 12,
+                            background: done ? 'rgba(52,211,153,0.05)' : 'linear-gradient(180deg, var(--surface-3), var(--surface-2))',
+                            border: `1px solid ${done ? 'rgba(52,211,153,0.22)' : borderCol}`,
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>
+                              {item.nombre_cliente || 'Sin cliente'} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {item.numero_de_expediente}</span>
+                            </div>
+                            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(99,102,241,0.14)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)' }}>
+                                {item.organismo}
+                              </span>
+                              <span>
+                                Radicado: {item.numero_radicado}{' '}
+                                <button type="button" onClick={() => handleCopiarRadicado(item.numero_radicado)} title="Copiar radicado" style={{ background: 'none', border: 'none', color: '#67e8f9', cursor: 'pointer', padding: 0, fontSize: 12.5 }}>
+                                  📋
+                                </button>
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                            {portalUrl && !done && (
+                              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleAbrirPortal(item.organismo)}>
+                                🔗 Abrir {item.organismo}
+                              </button>
+                            )}
+                            {done ? (
+                              <span style={{ fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 999, background: badge.bg, color: badge.fg, border: `1px solid ${badge.border}`, whiteSpace: 'nowrap' }}>
+                                ✓ {RESULT_LABEL[item.ultimo_resultado_hoy] || 'Revisado'}
+                              </span>
+                            ) : (
+                              <button type="button" className="btn btn-gold btn-sm" onClick={() => openFromChecklist(item)}>
+                                Marcar revisado
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -406,22 +548,6 @@ export default function ConsultasPage() {
               </button>
             ))}
           </div>
-        </div>
-
-        {/* Registro manual */}
-        <div className="dash-item" style={{ marginTop: 16 }}>
-          <div className="koop-section-head" style={{ justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="koop-section-icon" aria-hidden="true">✍️</span>
-              <span className="koop-section-title">Registro manual</span>
-            </div>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={openManual}>
-              + Elegir expediente
-            </button>
-          </div>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
-            Elige el expediente y el organismo/radicado público que corresponda (Rama Judicial, Fiscalía, Publicaciones Procesales...) — si el expediente aún no tiene ese radicado registrado, lo puedes agregar en el momento.
-          </p>
         </div>
 
         {/* Registros del día */}
@@ -448,14 +574,19 @@ export default function ConsultasPage() {
                         <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: badge.bg, color: badge.fg, border: `1px solid ${badge.border}` }}>
                           {RESULT_LABEL[record.resultado] || record.resultado}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(record)}
-                          title="Eliminar este registro"
-                          style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#fca5a5', fontSize: 11, cursor: 'pointer' }}
-                        >
-                          🗑️
-                        </button>
+                        {/* Solo se puede borrar lo de HOY — los días anteriores quedan
+                            fijos como constancia (si se necesita corregir algo viejo,
+                            se agrega una nota nueva, no se borra la historia). */}
+                        {selectedDate === todayIso() && (
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(record)}
+                            title="Eliminar este registro (solo disponible el mismo día)"
+                            style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#fca5a5', fontSize: 11, cursor: 'pointer' }}
+                          >
+                            🗑️
+                          </button>
+                        )}
                       </div>
                     </div>
                     {(record.nombre_cliente || record.nombre_contraparte) && (
@@ -494,7 +625,17 @@ export default function ConsultasPage() {
                 <>
                   {expRadicadosLoading ? (
                     <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Cargando radicados del expediente...</div>
-                  ) : radicadoOptions.length > 0 && !showNewRadicado ? (
+                  ) : radicadoOptions.length === 1 && !showNewRadicado ? (
+                    <>
+                      <div style={{ padding: 12, borderRadius: 10, background: 'rgba(148,163,184,0.05)', border: '1px solid var(--border-subtle)', fontSize: 13.5 }}>
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>{form.organismo}</div>
+                        <div style={{ color: 'var(--text-secondary)' }}>Radicado: {form.numero_radicado}</div>
+                      </div>
+                      <button type="button" className="btn btn-secondary btn-sm" style={{ justifySelf: 'start' }} onClick={() => setShowNewRadicado(true)}>
+                        + Agregar otro radicado a este expediente
+                      </button>
+                    </>
+                  ) : radicadoOptions.length > 1 && !showNewRadicado ? (
                     <>
                       <EditSelect
                         label="Radicado público *"
