@@ -85,7 +85,7 @@ export default function ConsultasPage() {
     <div className="dash-card consulta-container">
       <header className="consulta-header">
         <div><h1>Consulta diaria de procesos</h1><p>Los procesos de esta lista se revisan cada día hasta que los retires.</p></div>
-        <button className="btn btn-gold" disabled={busy} onClick={() => { setError(''); setAgregando(true); }}>+ Agregar proceso</button>
+        {(loading || items.length > 0) && <button className="btn btn-gold" disabled={busy} onClick={() => { setError(''); setAgregando(true); }}>+ Agregar proceso</button>}
       </header>
       <div className="consulta-toolbar">
         <label>Fecha de revisión <input type="date" className="input" aria-label="Fecha de revisión" value={fecha} max={hoy()} disabled={busy || verificando} onChange={(e) => { if (e.target.value) { setFecha(e.target.value); setAviso(''); } }} /></label>

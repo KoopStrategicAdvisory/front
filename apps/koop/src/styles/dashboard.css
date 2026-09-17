@@ -402,6 +402,15 @@
   font-family: var(--ff-base);
   transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease);
 }
+/* El <select> pinta su caja cerrada con este mismo degradado, pero el
+   menu desplegable nativo (las <option>) no soporta gradientes: sin un
+   color de fondo solido explicito el navegador lo deja en blanco, y como
+   el texto sigue heredando --text-primary (casi blanco) queda invisible
+   hasta pasar el mouse (el resaltado de hover sí cambia el fondo). */
+select.input option, select.select option, .input option, .select option {
+  background-color: var(--surface-2);
+  color: var(--text-primary);
+}
 .input:hover, .select:hover, .textarea:hover { border-color: var(--border-strong); }
 .input:focus, .select:focus, .textarea:focus {
   box-shadow: var(--ring);
