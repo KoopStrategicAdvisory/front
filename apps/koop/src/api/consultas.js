@@ -1,5 +1,15 @@
 import api from './axios';
 
+export async function agregarSeguimiento(payload) {
+  const { data } = await api.post('/consultas-externas/seguimientos', payload);
+  return data;
+}
+
+export async function configurarSeguimiento(id, modalidad) {
+  const { data } = await api.put(`/consultas-externas/radicados/${id}/seguimiento`, { modalidad });
+  return data;
+}
+
 // Bitácora de consultas externas diarias — reconstruida sobre
 // /api/consultas-externas (el /api/admin/consultas viejo nunca llegó a
 // existir en el backend real, dependía de un modelo mongoose muerto).

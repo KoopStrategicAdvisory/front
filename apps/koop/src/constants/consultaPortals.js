@@ -3,7 +3,7 @@
 // la pagina de Consultas externas (links + selector de organismo) como por
 // la pestaña "Radicados" del detalle de expediente (donde se cargan).
 export const CONSULTATION_PORTALS = [
-  { label: 'Consulta de procesos Rama Judicial', url: 'https://consultaprocesos.ramajudicial.gov.co/Procesos/Index' },
+  { label: 'Consulta de procesos Rama Judicial', url: 'https://consultaprocesos.ramajudicial.gov.co/Procesos/Index', automatica: true },
   { label: 'Publicaciones Procesales Rama Judicial', url: 'https://publicacionesprocesales.ramajudicial.gov.co/' },
   { label: 'SIUGJ', url: 'https://siugj.ramajudicial.gov.co/principalPortal/index.php' },
   { label: 'Consultas Fiscalía', url: 'https://consulta-web.fiscalia.gov.co/' },

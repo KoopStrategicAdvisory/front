@@ -1,0 +1,47 @@
+.consulta-page { padding: 24px; align-items: flex-start; }
+.consulta-container { max-width: 1100px; margin: 0 auto; }
+.consulta-header, .consulta-toolbar, .consulta-proceso-head, .consulta-cierre { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+.consulta-header h1 { font-size: 25px; margin: 0 0 8px; }
+.consulta-header p, .consulta-cierre p { color: var(--text-secondary); margin: 0; font-size: 14px; }
+.consulta-toolbar { padding: 20px 0; margin-top: 12px; border-bottom: 1px solid var(--border); color: var(--text-secondary); font-size: 14px; }
+.consulta-toolbar label { display: flex; gap: 12px; align-items: center; }
+.consulta-toolbar .input { width: auto; }
+.consulta-empty { text-align: center; padding: 64px 20px; color: var(--text-secondary); }
+.consulta-empty h2 { color: var(--text-primary); font-size: 22px; }
+.consulta-empty .btn { margin: 14px auto 0; }
+.consulta-lista { display: grid; gap: 16px; margin: 24px 0; }
+.consulta-proceso { border: 1px solid var(--border); background: var(--surface-2); border-radius: 14px; padding: 20px; }
+.consulta-proceso h2 { margin: 6px 0 0; font-size: 21px; overflow-wrap: anywhere; letter-spacing: .02em; }
+.consulta-proceso small { color: var(--text-secondary); }
+.consulta-proceso-head > div { min-width: 0; flex: 1; }
+.consulta-estado { border-radius: 24px; padding: 6px 12px; font-size: 12px; background: rgba(240,185,66,.12); color: #f6cd72; }
+.consulta-estado--completo { color: #67e8c0; background: rgba(52,211,153,.1); }
+.consulta-portal { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--text-secondary); font-size: 14px; }
+.consulta-portal span { font-size: 12px; border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; }
+.consulta-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.consulta-retirar { margin-left: auto; }
+.consulta-datos-auto { font-size: 13px; color: var(--text-secondary); margin-top: 16px; }
+.consulta-datos-auto summary { cursor: pointer; }
+.consulta-resultado { border-left: 2px solid #67e8c0; padding-left: 12px; margin-top: 16px; }
+.consulta-resultado p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.consulta-cierre { padding-top: 24px; border-top: 1px solid var(--border); }
+.consulta-cierre strong { display: block; margin-bottom: 6px; }
+.consulta-form, .consulta-form fieldset, .consulta-form label { display: grid; gap: 12px; }
+.consulta-form fieldset { border: 0; padding: 0; margin: 0; gap: 22px; min-width: 0; }
+.consulta-form label { font-size: 14px; font-weight: 600; }
+.consulta-form small { font-weight: 400; color: var(--text-secondary); line-height: 1.5; }
+.consulta-form .input { width: 100%; min-width: 0; box-sizing: border-box; }
+.consulta-radicado { display: grid; gap: 7px; padding: 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; }
+.consulta-radicado strong { overflow-wrap: anywhere; font-size: 20px; }
+.consulta-aviso { padding: 12px; background: rgba(52,211,153,.1); border-radius: 8px; }
+@media (max-width: 600px) {
+  .consulta-page { padding: 12px; }
+  .consulta-header h1 { font-size: 21px; }
+  .consulta-proceso { padding: 14px; }
+  .consulta-proceso h2 { font-size: 17px; }
+  .consulta-proceso-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .consulta-proceso-head > div { width: 100%; }
+  .consulta-retirar { margin-left: 0; }
+  .consulta-cierre .btn, .consulta-header > .btn { width: 100%; }
+  .consulta-toolbar label { flex-wrap: wrap; }
+}

@@ -1,711 +1,150 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../../context/AuthContext';
-import {
-  createConsultationLog,
-  deleteConsultationLog,
-  downloadConsultationPdf,
-  listConsultationLogs,
-  listRadicadosActivos,
-  verificarRamaJudicial,
-} from '../../../api/consultas';
-import { listExpedientes, listRadicadosPublicos, createRadicadoPublico } from '../../../api/expedientes';
-import { Modal, DeleteModal } from '../../../components/common/Modal';
-import { EditForm, EditSelect, EditTextArea } from '../../../components/common/EditFormKit';
-import { CONSULTATION_PORTALS, ORGANISMO_OPTIONS } from '../../../constants/consultaPortals';
+import { configurarSeguimiento, createConsultationLog, downloadConsultationPdf, listConsultationLogs, listRadicadosActivos, verificarRamaJudicial } from '../../../api/consultas';
+import { CONSULTATION_PORTALS } from '../../../constants/consultaPortals';
+import { Modal } from '../../../components/common/Modal';
+import AgregarProceso from './AgregarProceso';
 import '../../../styles/dashboard.css';
+import './consultas.css';
 
-const RESULT_OPTIONS = [
-  { value: 'sin_movimiento', label: 'Sin movimiento' },
-  { value: 'actuacion_nueva', label: 'Actuación nueva' },
-  { value: 'termino_corriendo', label: 'Término corriendo' },
-];
-
-const RESULT_LABEL = Object.fromEntries(RESULT_OPTIONS.map((o) => [o.value, o.label]));
-
-const RESULT_BADGE_COLOR = {
-  sin_movimiento: { bg: 'rgba(79,209,197,0.14)', fg: '#67e8f9', border: 'rgba(79,209,197,0.28)' },
-  actuacion_nueva: { bg: 'rgba(240,185,66,0.16)', fg: '#f6cd72', border: 'rgba(240,185,66,0.32)' },
-  termino_corriendo: { bg: 'rgba(239,68,68,0.14)', fg: '#fca5a5', border: 'rgba(239,68,68,0.28)' },
-};
-
-// Unico organismo que hoy se verifica solo (ver services/verificarRamaJudicial
-// en el backend) — el resto (Fiscalía, SIUGJ, SuperFinanciera...) pide
-// captcha o login y toca revisarlo a mano en su propio portal.
-const RAMA_JUDICIAL_LABEL = 'Consulta de procesos Rama Judicial';
-const PORTAL_URL_BY_ORGANISMO = Object.fromEntries(CONSULTATION_PORTALS.map((p) => [p.label, p.url]));
-
-// OJO: no usar toISOString() aquí — convierte a UTC, y Bogotá es UTC-5. Una
-// revisión hecha a las 8pm o más tarde quedaba fechada al día SIGUIENTE
-// (ya era el día siguiente en UTC), así que "Registros de hoy" mostraba
-// cosas de ayer y el checklist de hoy no contaba lo ya revisado anoche.
-function todayIso() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function formatDateTime(date) {
-  return new Date(date).toLocaleString('es-CO', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
-
-const EMPTY_FORM = {
-  id_expediente: '',
-  id_radicado_publico: '',
-  numero_radicado: '',
-  organismo: '',
-  resultado: 'sin_movimiento',
-  observacion: '',
-};
+const RESULTADOS = { sin_movimiento: 'Sin movimiento', actuacion_nueva: 'Actuación nueva', termino_corriendo: 'Término corriendo' };
+const hoy = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+const fechaHora = (value) => new Date(value).toLocaleString('es-CO', { timeZone: 'America/Bogota' });
 
 export default function ConsultasPage() {
   const { user } = useAuth();
-  const [selectedDate, setSelectedDate] = useState(todayIso);
+  const autorizado = (Array.isArray(user?.roles) ? user.roles : [user?.roles]).some((r) => ['admin', 'lawyer', 'super_admin', 'abogado', 'socio', 'asociado', 'junior', 'paralegal'].includes(r));
+  const [fecha, setFecha] = useState(hoy);
+  const [items, setItems] = useState([]);
+  const [registros, setRegistros] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
+  const [error, setError] = useState('');
+  const [aviso, setAviso] = useState('');
+  const [agregando, setAgregando] = useState(false);
+  const [revision, setRevision] = useState(null);
+  const [retiro, setRetiro] = useState(null);
+  const [resultado, setResultado] = useState('');
+  const [observacion, setObservacion] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [verificando, setVerificando] = useState(false);
+  const esHoy = fecha === hoy();
 
-  const [radicados, setRadicados] = useState([]);
-  const [radicadosLoading, setRadicadosLoading] = useState(false);
-  const [records, setRecords] = useState([]);
-  const [recordsLoading, setRecordsLoading] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
-  const [message, setMessage] = useState(null);
-  const [verificandoRama, setVerificandoRama] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  useEffect(() => {
+    if (!autorizado) return;
+    let cancelled = false;
+    setLoading(true); setError('');
+    Promise.all([listRadicadosActivos(fecha), listConsultationLogs(fecha)])
+      .then(([lista, logs]) => { if (!cancelled) { setItems(lista.items || []); setRegistros(logs.items || []); } })
+      .catch(() => { if (!cancelled) setError('No se pudo cargar la revisión diaria.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [fecha, reload, autorizado]);
 
-  const isAdminOrLawyer = useMemo(() => {
-    const roles = Array.isArray(user?.roles) ? user.roles : [user?.roles];
-    return roles.some((role) => ['admin', 'lawyer'].includes(String(role || '').toLowerCase()));
-  }, [user]);
-
-  // Modal de registro — dos modos:
-  //  - checklist: el radicado ya viene fijo (viene del checklist de hoy).
-  //  - manual: primero se elige el expediente, y de ahi el radicado publico
-  //    (o se crea uno nuevo en el sitio), porque el mismo expediente puede
-  //    tener un radicado distinto por cada organismo externo.
-  const [showForm, setShowForm] = useState(false);
-  const [formMode, setFormMode] = useState('checklist');
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
-
-  const [expedientes, setExpedientes] = useState([]);
-  const [expedientesLoading, setExpedientesLoading] = useState(false);
-  const [expRadicados, setExpRadicados] = useState([]);
-  const [expRadicadosLoading, setExpRadicadosLoading] = useState(false);
-  const [showNewRadicado, setShowNewRadicado] = useState(false);
-  const [newRadicado, setNewRadicado] = useState({ organismo: CONSULTATION_PORTALS[0].label, numero_radicado: '' });
-  const [addingRadicado, setAddingRadicado] = useState(false);
-
-  const pendientes = useMemo(() => radicados.filter((r) => !r.ultima_consulta_hoy_id), [radicados]);
-  const revisados = useMemo(() => radicados.filter((r) => r.ultima_consulta_hoy_id), [radicados]);
-  // Rama Judicial se verifica sola — se muestra compacto, con confirmar en un
-  // clic. Todo lo demas (Fiscalía, SIUGJ...) no se puede automatizar todavia
-  // y necesita la atención completa del abogado, con acceso directo al
-  // portal y al radicado listo para copiar.
-  const ramaItems = useMemo(() => [...pendientes, ...revisados].filter((r) => r.organismo === RAMA_JUDICIAL_LABEL), [pendientes, revisados]);
-  const manualItems = useMemo(() => [...pendientes, ...revisados].filter((r) => r.organismo !== RAMA_JUDICIAL_LABEL), [pendientes, revisados]);
-
-  const loadRadicados = () => {
-    setRadicadosLoading(true);
-    listRadicadosActivos(selectedDate)
-      .then((data) => setRadicados(Array.isArray(data.items) ? data.items : []))
-      .catch(() => setMessage({ type: 'error', text: 'No se pudieron cargar los radicados activos.' }))
-      .finally(() => setRadicadosLoading(false));
+  const completados = items.filter((i) => i.ultima_consulta_hoy_id).length;
+  const completa = items.length > 0 && completados === items.length;
+  const registroDe = (item) => registros.find((r) => String(r.id) === String(item.ultima_consulta_hoy_id));
+  const ejecutar = async (action) => {
+    setBusy(true); setError(''); setAviso('');
+    try { await action(); }
+    catch (e) { setError(e?.response?.data?.message || 'No se pudo completar la acción. Inténtalo nuevamente.'); }
+    finally { setBusy(false); }
   };
-
-  const loadRecords = () => {
-    setRecordsLoading(true);
-    listConsultationLogs(selectedDate)
-      .then((data) => setRecords(Array.isArray(data.items) ? data.items : []))
-      .catch(() => setMessage({ type: 'error', text: 'No se pudieron cargar los registros del día.' }))
-      .finally(() => setRecordsLoading(false));
+  const abrirRevision = (item) => {
+    const registro = registroDe(item);
+    setResultado(registro?.resultado || ''); setObservacion(registro?.observacion || '');
+    setError(''); setRevision(item);
   };
-
-  useEffect(() => { if (selectedDate) { loadRadicados(); loadRecords(); } }, [selectedDate]);
-
-  // Dispara ahora mismo el mismo chequeo que corre solo cada dia a las 6am:
-  // busca cada radicado de Rama Judicial en el portal publico (sin captcha)
-  // y actualiza cual tuvo actuacion nueva desde la ultima vez que se reviso.
-  const handleVerificarRama = async () => {
-    setVerificandoRama(true);
-    setMessage(null);
-    try {
-      const r = await verificarRamaJudicial();
-      loadRadicados();
-      const texto = r.novedades > 0
-        ? `Se encontraron ${r.novedades} radicado${r.novedades === 1 ? '' : 's'} con actuación nueva de ${r.revisados} revisados en Rama Judicial.`
-        : `Se revisaron ${r.revisados} radicados en Rama Judicial — sin novedades.`;
-      setMessage({ type: 'success', text: texto + (r.errores.length ? ` (${r.errores.length} no se pudieron consultar)` : '') });
-    } catch (err) {
-      setMessage({ type: 'error', text: err?.response?.data?.message || 'No se pudo verificar Rama Judicial.' });
-    } finally {
-      setVerificandoRama(false);
-    }
-  };
-
-  // Si el verificador automatico ya encontro una actuacion nueva para este
-  // radicado, se precarga el formulario con eso — el abogado solo confirma
-  // o ajusta en vez de escribir todo desde cero.
-  const openFromChecklist = (item) => {
-    setFormMode('checklist');
-    const hayNovedadAutomatica = !!item.ultima_actuacion_texto;
-    setForm({
-      id_expediente: item.id_expediente,
-      id_radicado_publico: item.id_radicado_publico,
-      numero_radicado: item.numero_radicado,
-      organismo: item.organismo,
-      resultado: hayNovedadAutomatica ? 'actuacion_nueva' : 'sin_movimiento',
-      observacion: hayNovedadAutomatica ? `Detectado automáticamente (Rama Judicial): ${item.ultima_actuacion_texto}` : '',
+  const guardarRevision = (event) => {
+    event.preventDefault();
+    ejecutar(async () => {
+      await createConsultationLog({ id_radicado_publico: revision.id_radicado_publico, resultado, observacion: observacion.trim(), fecha_consulta: fecha });
+      setRevision(null); setReload((n) => n + 1); setAviso('Revisión del día guardada.');
     });
-    setShowForm(true);
   };
-
-  // Confirmar en un clic para lo que ya verificó Rama Judicial sola — sin
-  // abrir el formulario completo. Si quiere ajustar algo, igual puede abrir
-  // el formulario con el lápiz.
-  const handleConfirmarRapido = async (item) => {
-    setMessage(null);
+  const verificar = async () => {
+    setVerificando(true); setError(''); setAviso('');
     try {
-      const hayNovedad = !!item.ultima_actuacion_texto;
-      await createConsultationLog({
-        id_expediente: item.id_expediente,
-        id_radicado_publico: item.id_radicado_publico,
-        numero_radicado: item.numero_radicado,
-        portal_consultado: item.organismo,
-        resultado: hayNovedad ? 'actuacion_nueva' : 'sin_movimiento',
-        observacion: hayNovedad ? `Detectado automáticamente (Rama Judicial): ${item.ultima_actuacion_texto}` : undefined,
-        fecha_consulta: selectedDate,
-      });
-      loadRadicados();
-      loadRecords();
-    } catch (err) {
-      setMessage({ type: 'error', text: err?.response?.data?.message || 'No se pudo confirmar el registro.' });
-    }
+      const result = await verificarRamaJudicial();
+      setReload((n) => n + 1);
+      setAviso(`Consulta automática: ${result.revisados} de ${result.total} procesos consultados. Revisa los resultados y registra la constancia del día.`);
+      if (result.errores?.length) setError(result.errores.map((e) => `${e.numero_radicado}: ${e.message}`).join(' · '));
+    } catch { setError('No se pudo realizar la consulta automática. Puedes revisar los procesos manualmente en su página.'); }
+    finally { setVerificando(false); }
   };
+  const descargar = () => ejecutar(async () => {
+    const blob = await downloadConsultationPdf(fecha);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a'); link.href = url; link.download = `bitacora-diaria-${fecha}.pdf`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
 
-  const handleAbrirPortal = (organismo) => {
-    const url = PORTAL_URL_BY_ORGANISMO[organismo];
-    if (url) window.open(url, '_blank', 'noopener');
-  };
-
-  const handleCopiarRadicado = async (numero) => {
-    try {
-      await navigator.clipboard.writeText(numero);
-      setMessage({ type: 'success', text: `Radicado ${numero} copiado.` });
-    } catch {
-      setMessage({ type: 'error', text: 'No se pudo copiar el radicado — cópialo manualmente.' });
-    }
-  };
-
-  const openManual = () => {
-    setFormMode('manual');
-    setForm(EMPTY_FORM);
-    setExpRadicados([]);
-    setShowNewRadicado(false);
-    setShowForm(true);
-    if (expedientes.length === 0) {
-      setExpedientesLoading(true);
-      listExpedientes({ active: true, limit: 200 })
-        .then((data) => setExpedientes(Array.isArray(data.items) ? data.items : []))
-        .catch(() => setMessage({ type: 'error', text: 'No se pudieron cargar los expedientes.' }))
-        .finally(() => setExpedientesLoading(false));
-    }
-  };
-
-  const onSelectExpediente = (idExpediente) => {
-    setForm((f) => ({ ...f, id_expediente: idExpediente, id_radicado_publico: '', numero_radicado: '', organismo: '' }));
-    setExpRadicados([]);
-    setShowNewRadicado(false);
-    if (!idExpediente) return;
-    setExpRadicadosLoading(true);
-    listRadicadosPublicos(idExpediente)
-      .then((data) => {
-        const items = Array.isArray(data.items) ? data.items : [];
-        setExpRadicados(items);
-        if (items.length === 0) {
-          // Este expediente todavía no tiene radicado público — es el único
-          // caso donde de verdad hace falta escribirlo, porque el dato no existe.
-          setShowNewRadicado(true);
-        } else if (items.length === 1) {
-          // Ya sabemos cuál es — no tiene sentido hacer elegir en un select
-          // de una sola opción. Queda fijo, igual que en el modo checklist.
-          const only = items[0];
-          setForm((f) => ({ ...f, id_radicado_publico: only.id, numero_radicado: only.numero_radicado, organismo: only.organismo }));
-        }
-      })
-      .catch(() => setMessage({ type: 'error', text: 'No se pudieron cargar los radicados de ese expediente.' }))
-      .finally(() => setExpRadicadosLoading(false));
-  };
-
-  const onSelectRadicadoPublico = (idRadicado) => {
-    const found = expRadicados.find((r) => String(r.id) === String(idRadicado));
-    setForm((f) => ({
-      ...f,
-      id_radicado_publico: idRadicado,
-      numero_radicado: found?.numero_radicado || '',
-      organismo: found?.organismo || '',
-    }));
-  };
-
-  const handleAddRadicado = async () => {
-    if (!form.id_expediente || !newRadicado.numero_radicado.trim()) {
-      setMessage({ type: 'error', text: 'Elige el expediente y escribe el número de radicado.' });
-      return;
-    }
-    setAddingRadicado(true);
-    try {
-      const created = await createRadicadoPublico(form.id_expediente, {
-        organismo: newRadicado.organismo,
-        numero_radicado: newRadicado.numero_radicado.trim(),
-      });
-      setExpRadicados((prev) => [...prev.filter((r) => r.id !== created.id), created]);
-      setForm((f) => ({ ...f, id_radicado_publico: created.id, numero_radicado: created.numero_radicado, organismo: created.organismo }));
-      setShowNewRadicado(false);
-      setNewRadicado({ organismo: CONSULTATION_PORTALS[0].label, numero_radicado: '' });
-    } catch (err) {
-      setMessage({ type: 'error', text: err?.response?.data?.message || 'No se pudo agregar el radicado.' });
-    } finally {
-      setAddingRadicado(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!form.numero_radicado.trim()) {
-      setMessage({ type: 'error', text: 'Selecciona (o agrega) un radicado antes de guardar.' });
-      return;
-    }
-    setSaving(true);
-    setMessage(null);
-    try {
-      await createConsultationLog({
-        id_expediente: form.id_expediente || undefined,
-        id_radicado_publico: form.id_radicado_publico || undefined,
-        numero_radicado: form.numero_radicado.trim(),
-        portal_consultado: form.organismo || undefined,
-        resultado: form.resultado,
-        observacion: form.observacion.trim() || undefined,
-        fecha_consulta: selectedDate,
-      });
-      setShowForm(false);
-      setMessage({ type: 'success', text: 'Registro guardado — queda constancia de la revisión.' });
-      loadRadicados();
-      loadRecords();
-    } catch (err) {
-      setMessage({ type: 'error', text: err?.response?.data?.message || 'No se pudo guardar el registro.' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!deleteTarget) return;
-    try {
-      await deleteConsultationLog(deleteTarget.id);
-      setDeleteTarget(null);
-      setMessage({ type: 'success', text: 'Registro eliminado.' });
-      loadRadicados();
-      loadRecords();
-    } catch (err) {
-      setMessage({ type: 'error', text: err?.response?.data?.message || 'No se pudo eliminar el registro.' });
-    }
-  };
-
-  const handleDownloadPdf = async () => {
-    try {
-      setPdfLoading(true);
-      const blob = await downloadConsultationPdf(selectedDate);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `bitacora-diaria-${selectedDate}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setMessage({ type: 'error', text: 'No se pudo generar el PDF.' });
-    } finally {
-      setPdfLoading(false);
-    }
-  };
-
-  if (!isAdminOrLawyer) {
-    return (
-      <div className="dash-page" style={{ padding: 24 }}>
-        <div className="dash-card">
-          <div style={{ fontWeight: 600, marginBottom: 16 }}>Acceso no autorizado</div>
-          <div>No tienes permiso para ver esta sección.</div>
-        </div>
+  if (!autorizado) return <div className="dash-page">No tienes acceso a la consulta diaria.</div>;
+  return <div className="dash-page consulta-page">
+    <div className="dash-card consulta-container">
+      <header className="consulta-header">
+        <div><h1>Consulta diaria de procesos</h1><p>Los procesos de esta lista se revisan cada día hasta que los retires.</p></div>
+        <button className="btn btn-gold" disabled={busy} onClick={() => { setError(''); setAgregando(true); }}>+ Agregar proceso</button>
+      </header>
+      <div className="consulta-toolbar">
+        <label>Fecha de revisión <input type="date" className="input" aria-label="Fecha de revisión" value={fecha} max={hoy()} disabled={busy || verificando} onChange={(e) => { if (e.target.value) { setFecha(e.target.value); setAviso(''); } }} /></label>
+        <span>{loading ? 'Cargando…' : `${completados} de ${items.length} revisados`}</span>
+        {esHoy && items.some((i) => i.modalidad === 'automatica') && <button className="btn btn-secondary" disabled={busy || verificando || loading} onClick={verificar}>{verificando ? 'Consultando…' : 'Consultar automáticos ahora'}</button>}
       </div>
-    );
-  }
-
-  const borderCol = 'var(--border)';
-  const expedienteOptions = expedientes.map((e) => ({
-    value: String(e.id),
-    label: `${e.numero_de_expediente}${e.nombre_cliente ? ` — ${e.nombre_cliente}` : ''}`,
-  }));
-  const radicadoOptions = expRadicados.map((r) => ({ value: String(r.id), label: `${r.organismo} — ${r.numero_radicado}` }));
-
-  return (
-    <div className="dash-page" style={{ padding: 24 }}>
-      <div className="dash-card" style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <div className="dash-header" style={{ flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <div className="dash-title">Consultas externas diarias</div>
-            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-              Revisión diaria de los procesos activos en los portales externos, con constancia de quién y cuándo la hizo.
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <input type="date" className="input" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
-            <button className="btn btn-secondary btn-sm" type="button" onClick={() => setSelectedDate(todayIso())}>Hoy</button>
-            <button className="btn btn-gold btn-sm" type="button" onClick={handleDownloadPdf} disabled={pdfLoading}>
-              {pdfLoading ? 'Generando…' : '📄 Generar constancia PDF'}
-            </button>
-          </div>
-        </div>
-
-        {message && (
-          <div className={`alert ${message.type === 'error' ? 'alert-error' : ''}`} style={message.type === 'success' ? { background: 'var(--success-bg)', color: '#bdf5dd', border: '1px solid rgba(167,243,208,0.25)' } : undefined}>
-            {message.text}
-          </div>
-        )}
-
-        {/* Registro de revisión de expediente: arriba y a mano, para lo que
-            no salió hoy en el checklist automático, o para un expediente que
-            aún no tiene radicado público registrado. */}
-        <div className="dash-item" style={{ marginTop: 16 }}>
-          <div className="koop-section-head" style={{ justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="koop-section-icon" aria-hidden="true">✍️</span>
-              <span className="koop-section-title">Registro de revisión de expediente</span>
+      {error && !revision && !retiro && <div role="alert" className="alert alert-error">{error} <button className="btn btn-secondary btn-sm" onClick={() => setReload((n) => n + 1)}>Actualizar lista</button></div>}
+      {aviso && <p role="status" className="consulta-aviso">{aviso}</p>}
+      {loading ? <p role="status" className="consulta-empty">Cargando procesos…</p> : !items.length ? <div className="consulta-empty">
+        <h2>{esHoy ? 'Agrega tu primer proceso' : 'No había procesos en seguimiento en esta fecha'}</h2>
+        <p>Selecciona un cliente, el radicado de su expediente y la página donde se revisará.</p>
+        <button className="btn btn-gold" onClick={() => { setError(''); setAgregando(true); }}>+ Agregar {esHoy ? 'primer ' : ''}proceso</button>
+      </div> : <div className="consulta-lista">
+        {items.map((item) => {
+          const log = registroDe(item);
+          const portal = CONSULTATION_PORTALS.find((p) => p.label === item.organismo);
+          return <article className="consulta-proceso" key={item.id_radicado_publico}>
+            <div className="consulta-proceso-head">
+              <div><small>{item.nombre_cliente || 'Cliente sin asignar'}</small><h2>{item.numero_radicado}</h2></div>
+              <span className={`consulta-estado ${log ? 'consulta-estado--completo' : ''}`}>{log ? RESULTADOS[log.resultado] : 'Pendiente de revisión'}</span>
             </div>
-            <button type="button" className="btn btn-gold btn-sm" onClick={openManual}>
-              + Elegir expediente
-            </button>
-          </div>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
-            Es la misma revisión diaria del checklist de abajo, pero eligiendo tú el expediente — para uno que no salió hoy en el checklist, o que todavía no tiene radicado público registrado (lo puedes agregar en el momento).
-          </p>
-        </div>
-
-        {/* Checklist del día */}
-        <div className="dash-item" style={{ marginTop: 16 }}>
-          <div className="koop-section-head" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="koop-section-icon" aria-hidden="true">✅</span>
-              <span className="koop-section-title">Checklist de hoy</span>
+            <p className="consulta-portal">{item.organismo}<span>{item.modalidad === 'automatica' ? 'Automática' : 'Manual'}</span></p>
+            {item.modalidad === 'automatica' && esHoy && <details className="consulta-datos-auto">
+              <summary>Información de la consulta automática</summary>
+              <p>{item.ultima_verificacion_automatica ? `Última consulta: ${fechaHora(item.ultima_verificacion_automatica)}` : 'Todavía no se ha consultado automáticamente.'}</p>
+              {item.ultima_actuacion_texto && <p>Última actuación conocida: {item.ultima_actuacion_texto}</p>}
+              <small>Confirma que la información corresponde al día de hoy antes de registrar el resultado.</small>
+            </details>}
+            {log && <div className="consulta-resultado">{log.observacion && <p>{log.observacion}</p>}<small>Registrado por {log.nombre_usuario || '—'} · {fechaHora(log.created_at)}</small></div>}
+            <div className="consulta-acciones">
+              {portal && <a className="btn btn-secondary btn-sm" href={portal.url} target="_blank" rel="noopener noreferrer">Abrir página</a>}
+              <button className="btn btn-secondary btn-sm" onClick={() => ejecutar(async () => { await navigator.clipboard.writeText(item.numero_radicado); setAviso('Radicado copiado.'); })} disabled={busy}>Copiar radicado</button>
+              {esHoy && <button className="btn btn-gold btn-sm" disabled={busy} onClick={() => abrirRevision(item)}>{log ? 'Corregir registro' : 'Registrar revisión'}</button>}
+              {esHoy && <button className="btn btn-secondary btn-sm consulta-retirar" disabled={busy || verificando} onClick={() => { setError(''); setRetiro(item); }}>Retirar de la lista</button>}
             </div>
-            <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-              {radicadosLoading ? 'Cargando…' : `${revisados.length} de ${radicados.length} revisados`}
-            </span>
-          </div>
-
-          {radicadosLoading ? (
-            <div style={{ color: 'var(--text-secondary)', padding: '12px 0' }}>Cargando radicados activos...</div>
-          ) : radicados.length === 0 ? (
-            <div style={{ color: 'var(--text-secondary)', padding: '12px 0' }}>
-              Ningún expediente activo tiene todavía un radicado público registrado. Usa "Registro de revisión de expediente" para agregar el primero.
-            </div>
-          ) : (
-            <>
-              {/* Rama Judicial: se verifica sola, así que se muestra compacto */}
-              <div style={{ marginTop: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    🤖 Rama Judicial <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>— se verifica sola todos los días a las 6:00 a.m.</span>
-                  </div>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={handleVerificarRama} disabled={verificandoRama}>
-                    {verificandoRama ? 'Verificando…' : 'Verificar ahora'}
-                  </button>
-                </div>
-                {ramaItems.length === 0 ? (
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '4px 0 0' }}>Ningún radicado de Rama Judicial registrado todavía.</div>
-                ) : (
-                  <div style={{ display: 'grid', gap: 6 }}>
-                    {ramaItems.map((item) => {
-                      const done = !!item.ultima_consulta_hoy_id;
-                      const hayNovedad = !done && !!item.ultima_actuacion_texto;
-                      return (
-                        <div
-                          key={item.id_radicado_publico}
-                          style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
-                            padding: '8px 12px', borderRadius: 10,
-                            background: done ? 'rgba(52,211,153,0.04)' : hayNovedad ? 'rgba(240,185,66,0.05)' : 'var(--surface-2)',
-                            border: `1px solid ${done ? 'rgba(52,211,153,0.18)' : hayNovedad ? 'rgba(240,185,66,0.25)' : borderCol}`,
-                          }}
-                        >
-                          <div style={{ minWidth: 0, fontSize: 13 }}>
-                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.nombre_cliente || 'Sin cliente'}</span>
-                            <span style={{ color: 'var(--text-muted)' }}> · {item.numero_de_expediente} · Radicado: {item.numero_radicado}</span>
-                            {hayNovedad && (
-                              <div style={{ marginTop: 2, color: '#f6cd72', fontSize: 12 }}>Detectado: {item.ultima_actuacion_texto}</div>
-                            )}
-                            {!hayNovedad && !done && item.ultima_verificacion_automatica && (
-                              <span style={{ color: '#67e8f9', fontSize: 12 }}> — sin novedad</span>
-                            )}
-                          </div>
-                          {done ? (() => {
-                            const badge = RESULT_BADGE_COLOR[item.ultimo_resultado_hoy] || RESULT_BADGE_COLOR.sin_movimiento;
-                            return (
-                              <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap', background: badge.bg, color: badge.fg, border: `1px solid ${badge.border}` }}>
-                                ✓ {RESULT_LABEL[item.ultimo_resultado_hoy] || 'Revisado'}
-                              </span>
-                            );
-                          })() : (
-                            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                              <button type="button" className="btn btn-gold btn-sm" onClick={() => handleConfirmarRapido(item)}>✓ Confirmar</button>
-                              <button type="button" className="btn btn-secondary btn-sm" onClick={() => openFromChecklist(item)} title="Editar antes de confirmar">✏️</button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Todo lo demás: no se puede automatizar, necesita revisión manual */}
-              {manualItems.length > 0 && (
-                <div style={{ marginTop: 20 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
-                    ✍️ Revisión manual <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>— pide login o captcha, toca revisarlo tú</span>
-                  </div>
-                  <div style={{ display: 'grid', gap: 10 }}>
-                    {manualItems.map((item) => {
-                      const done = !!item.ultima_consulta_hoy_id;
-                      const badge = done ? RESULT_BADGE_COLOR[item.ultimo_resultado_hoy] || RESULT_BADGE_COLOR.sin_movimiento : null;
-                      const portalUrl = PORTAL_URL_BY_ORGANISMO[item.organismo];
-                      return (
-                        <div
-                          key={item.id_radicado_publico}
-                          style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
-                            padding: '12px 14px', borderRadius: 12,
-                            background: done ? 'rgba(52,211,153,0.05)' : 'linear-gradient(180deg, var(--surface-3), var(--surface-2))',
-                            border: `1px solid ${done ? 'rgba(52,211,153,0.22)' : borderCol}`,
-                          }}
-                        >
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>
-                              {item.nombre_cliente || 'Sin cliente'} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {item.numero_de_expediente}</span>
-                            </div>
-                            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(99,102,241,0.14)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)' }}>
-                                {item.organismo}
-                              </span>
-                              <span>
-                                Radicado: {item.numero_radicado}{' '}
-                                <button type="button" onClick={() => handleCopiarRadicado(item.numero_radicado)} title="Copiar radicado" style={{ background: 'none', border: 'none', color: '#67e8f9', cursor: 'pointer', padding: 0, fontSize: 12.5 }}>
-                                  📋
-                                </button>
-                              </span>
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                            {portalUrl && !done && (
-                              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleAbrirPortal(item.organismo)}>
-                                🔗 Abrir {item.organismo}
-                              </button>
-                            )}
-                            {done ? (
-                              <span style={{ fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 999, background: badge.bg, color: badge.fg, border: `1px solid ${badge.border}`, whiteSpace: 'nowrap' }}>
-                                ✓ {RESULT_LABEL[item.ultimo_resultado_hoy] || 'Revisado'}
-                              </span>
-                            ) : (
-                              <button type="button" className="btn btn-gold btn-sm" onClick={() => openFromChecklist(item)}>
-                                Marcar revisado
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Portales externos */}
-        <div className="dash-item" style={{ marginTop: 16 }}>
-          <div className="koop-section-head">
-            <span className="koop-section-icon" aria-hidden="true">🔗</span>
-            <span className="koop-section-title">Portales de consulta</span>
-          </div>
-          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-            {CONSULTATION_PORTALS.map((portal) => (
-              <button
-                key={portal.label}
-                type="button"
-                className="btn btn-secondary"
-                style={{ justifyContent: 'flex-start' }}
-                onClick={() => window.open(portal.url, '_blank', 'noopener')}
-              >
-                {portal.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Registros del día */}
-        <div className="dash-item" style={{ marginTop: 16 }}>
-          <div className="koop-section-head">
-            <span className="koop-section-icon" aria-hidden="true">📋</span>
-            <span className="koop-section-title">Registros del {selectedDate}</span>
-          </div>
-          {recordsLoading ? (
-            <div style={{ color: 'var(--text-secondary)' }}>Cargando registros...</div>
-          ) : records.length === 0 ? (
-            <div style={{ color: 'var(--text-secondary)' }}>No hay registros para esta fecha.</div>
-          ) : (
-            <div style={{ display: 'grid', gap: 10 }}>
-              {records.map((record) => {
-                const badge = RESULT_BADGE_COLOR[record.resultado] || RESULT_BADGE_COLOR.sin_movimiento;
-                return (
-                  <div key={record.id} style={{ padding: 14, borderRadius: 12, background: 'linear-gradient(180deg, var(--surface-3), var(--surface-2))', border: `1px solid ${borderCol}` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                      <div style={{ fontWeight: 600 }}>
-                        {record.numero_radicado} {record.numero_de_expediente ? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {record.numero_de_expediente}</span> : null}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: badge.bg, color: badge.fg, border: `1px solid ${badge.border}` }}>
-                          {RESULT_LABEL[record.resultado] || record.resultado}
-                        </span>
-                        {/* Solo se puede borrar lo de HOY — los días anteriores quedan
-                            fijos como constancia (si se necesita corregir algo viejo,
-                            se agrega una nota nueva, no se borra la historia). */}
-                        {selectedDate === todayIso() && (
-                          <button
-                            type="button"
-                            onClick={() => setDeleteTarget(record)}
-                            title="Eliminar este registro (solo disponible el mismo día)"
-                            style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#fca5a5', fontSize: 11, cursor: 'pointer' }}
-                          >
-                            🗑️
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {(record.nombre_cliente || record.nombre_contraparte) && (
-                      <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                        Partes: {record.nombre_cliente || '—'}{record.nombre_contraparte ? ` vs. ${record.nombre_contraparte}` : ''}
-                      </div>
-                    )}
-                    {record.portal_consultado && (
-                      <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                        Sitio consultado: {record.portal_consultado}
-                      </div>
-                    )}
-                    {record.observacion && <div style={{ marginTop: 8, color: 'var(--text-secondary)', fontSize: 13.5 }}>{record.observacion}</div>}
-                    <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-                      Revisado por {record.nombre_usuario || '—'} · {formatDateTime(record.created_at)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <Modal show={showForm} onClose={() => setShowForm(false)} title="✅ Registrar revisión">
-        <EditForm>
-          {formMode === 'manual' ? (
-            <>
-              <EditSelect
-                label="Expediente *"
-                value={form.id_expediente ? String(form.id_expediente) : ''}
-                onChange={(e) => onSelectExpediente(e.target.value)}
-                options={expedientesLoading ? [{ value: '', label: 'Cargando expedientes...' }] : expedienteOptions}
-              />
-              {form.id_expediente && (
-                <>
-                  {expRadicadosLoading ? (
-                    <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Cargando radicados del expediente...</div>
-                  ) : radicadoOptions.length === 1 && !showNewRadicado ? (
-                    <>
-                      <div style={{ padding: 12, borderRadius: 10, background: 'rgba(148,163,184,0.05)', border: '1px solid var(--border-subtle)', fontSize: 13.5 }}>
-                        <div style={{ fontWeight: 600, marginBottom: 4 }}>{form.organismo}</div>
-                        <div style={{ color: 'var(--text-secondary)' }}>Radicado: {form.numero_radicado}</div>
-                      </div>
-                      <button type="button" className="btn btn-secondary btn-sm" style={{ justifySelf: 'start' }} onClick={() => setShowNewRadicado(true)}>
-                        + Agregar otro radicado a este expediente
-                      </button>
-                    </>
-                  ) : radicadoOptions.length > 1 && !showNewRadicado ? (
-                    <>
-                      <EditSelect
-                        label="Radicado público *"
-                        value={form.id_radicado_publico ? String(form.id_radicado_publico) : ''}
-                        onChange={(e) => onSelectRadicadoPublico(e.target.value)}
-                        options={radicadoOptions}
-                      />
-                      <button type="button" className="btn btn-secondary btn-sm" style={{ justifySelf: 'start' }} onClick={() => setShowNewRadicado(true)}>
-                        + Agregar otro radicado a este expediente
-                      </button>
-                    </>
-                  ) : (
-                    <div style={{ display: 'grid', gap: 10, padding: 12, borderRadius: 10, border: '1px dashed var(--border)' }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-secondary)' }}>Nuevo radicado público</div>
-                      <EditSelect
-                        label="Organismo"
-                        value={newRadicado.organismo}
-                        onChange={(e) => setNewRadicado((n) => ({ ...n, organismo: e.target.value }))}
-                        options={ORGANISMO_OPTIONS}
-                      />
-                      <input
-                        className="input"
-                        placeholder="Número de radicado"
-                        value={newRadicado.numero_radicado}
-                        onChange={(e) => setNewRadicado((n) => ({ ...n, numero_radicado: e.target.value }))}
-                      />
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button type="button" className="btn btn-primary btn-sm" onClick={handleAddRadicado} disabled={addingRadicado}>
-                          {addingRadicado ? 'Agregando…' : 'Agregar radicado'}
-                        </button>
-                        {radicadoOptions.length > 0 && (
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowNewRadicado(false)}>Cancelar</button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </>
-          ) : (
-            <div style={{ padding: 12, borderRadius: 10, background: 'rgba(148,163,184,0.05)', border: '1px solid var(--border-subtle)', fontSize: 13.5 }}>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>{form.organismo}</div>
-              <div style={{ color: 'var(--text-secondary)' }}>Radicado: {form.numero_radicado}</div>
-            </div>
-          )}
-
-          <EditSelect
-            label="Resultado"
-            value={form.resultado}
-            onChange={(e) => setForm({ ...form, resultado: e.target.value })}
-            options={RESULT_OPTIONS}
-          />
-          <EditTextArea label="Observación" value={form.observacion} onChange={(e) => setForm({ ...form, observacion: e.target.value })} rows={4} placeholder="Detalles relevantes de la revisión (opcional)" />
-        </EditForm>
-        <div className="kf-modal-footer" style={{ padding: '18px 0 0' }}>
-          <button className="btn btn-secondary" type="button" onClick={() => setShowForm(false)} disabled={saving}>Cancelar</button>
-          <button className="btn btn-gold" type="button" onClick={handleSubmit} disabled={saving || !form.numero_radicado}>
-            {saving ? 'Guardando…' : 'Guardar registro'}
-          </button>
-        </div>
-      </Modal>
-
-      <DeleteModal
-        show={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleConfirmDelete}
-        description={deleteTarget && (
-          <>¿Eliminar el registro del radicado <strong style={{ color: '#fc771c' }}>{deleteTarget.numero_radicado}</strong>{deleteTarget.numero_de_expediente ? ` (${deleteTarget.numero_de_expediente})` : ''}?</>
-        )}
-      />
+          </article>;
+        })}
+      </div>}
+      <footer className="consulta-cierre">
+        <div><strong>Bitácora del día</strong><p>{completa ? 'Todos los procesos tienen registro. La constancia está lista.' : 'Registra la revisión de cada proceso para generar la constancia diaria.'}</p></div>
+        <button className="btn btn-gold" disabled={!completa || loading || busy} onClick={descargar}>{busy ? 'Procesando…' : 'Generar bitácora del día (PDF)'}</button>
+      </footer>
     </div>
-  );
+    {agregando && <AgregarProceso onClose={() => setAgregando(false)} onAdded={() => { setAgregando(false); setFecha(hoy()); setReload((n) => n + 1); setAviso('Proceso agregado a la lista diaria.'); }} />}
+    <Modal show={!!revision} onClose={() => { if (!busy) setRevision(null); }} title="Registrar revisión del día">
+      {revision && <form className="consulta-form" onSubmit={guardarRevision}>
+        <div className="consulta-radicado"><small>{revision.nombre_cliente} · {fecha}</small><strong>{revision.numero_radicado}</strong><small>{revision.organismo}</small></div>
+        {error && <p role="alert" className="alert alert-error">{error}</p>}
+        <fieldset disabled={busy}>
+          <label>Resultado<select className="input" aria-label="Resultado" required value={resultado} onChange={(e) => setResultado(e.target.value)}><option value="">Selecciona el resultado</option>{Object.entries(RESULTADOS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>Observaciones<textarea className="input" rows={4} value={observacion} onChange={(e) => setObservacion(e.target.value)} placeholder="Actuaciones, fechas o detalles de la consulta" /></label>
+        </fieldset>
+        <div className="kf-modal-footer"><button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setRevision(null)}>Cancelar</button><button className="btn btn-gold" disabled={busy || !resultado}>{busy ? 'Guardando…' : 'Guardar revisión'}</button></div>
+      </form>}
+    </Modal>
+    <Modal show={!!retiro} onClose={() => { if (!busy) setRetiro(null); }} title="Retirar de la revisión diaria" size="sm">
+      {error && <p role="alert" className="alert alert-error">{error}</p>}
+      <p>El radicado <strong>{retiro?.numero_radicado}</strong> dejará de revisarse desde hoy. Se conservarán el expediente y sus registros. Puedes agregarlo de nuevo después.</p>
+      <div className="kf-modal-footer"><button className="btn btn-secondary" disabled={busy} onClick={() => setRetiro(null)}>Cancelar</button><button className="btn btn-gold" disabled={busy} onClick={() => ejecutar(async () => { await configurarSeguimiento(retiro.id_radicado_publico, null); setRetiro(null); setReload((n) => n + 1); })}>{busy ? 'Retirando…' : 'Retirar proceso'}</button></div>
+    </Modal>
+  </div>;
 }

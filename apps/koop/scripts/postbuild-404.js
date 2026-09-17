@@ -1,9 +1,10 @@
 // Duplicate dist/index.html to dist/404.html so GitHub Pages serves
 // the SPA shell on deep links (refresh on /ruta) without redirecting.
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const dist = path.resolve(__dirname, '..', 'dist');
+const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 const src = path.join(dist, 'index.html');
 const dst = path.join(dist, '404.html');
 

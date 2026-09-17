@@ -994,7 +994,7 @@ function RadicadosPublicosTab({ expedienteId, canEdit, onChanged }) {
     <div>
       {notice && <TabNotice notice={notice} />}
       <p style={{ fontSize: 13, color: '#9fb3cc', marginTop: 0, marginBottom: 16 }}>
-        Cada radicado que agregues aquí aparece automáticamente en el checklist diario de "Consultas externas" para que no se le pase revisarlo.
+        Aquí quedan registrados los radicados públicos del expediente. Esto solo los deja constando — para que entren al checklist diario de revisión, agrégalos desde "Consultas externas" → "+ Agregar proceso".
       </p>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         {canEdit && <button className="btn btn-primary" onClick={() => { setForm(EMPTY_RADICADO); setShowCreate(true); }} style={{ fontSize: 13, padding: '8px 16px' }}>➕ Nuevo Radicado</button>}
@@ -1004,7 +1004,7 @@ function RadicadosPublicosTab({ expedienteId, canEdit, onChanged }) {
         <div style={{ color: '#9fb3cc', textAlign: 'center', padding: 40 }}>Cargando radicados...</div>
       ) : items.length === 0 ? (
         <div style={{ color: '#9fb3cc', textAlign: 'center', padding: 40 }}>
-          Sin radicados públicos registrados — este expediente no aparecerá en el checklist de Consultas externas hasta que agregues al menos uno.
+          Sin radicados públicos registrados todavía.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
