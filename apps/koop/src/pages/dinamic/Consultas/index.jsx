@@ -67,7 +67,7 @@ export default function ConsultasPage() {
     try {
       const result = await verificarRamaJudicial();
       setReload((n) => n + 1);
-      setAviso(`Consulta automática: ${result.revisados} de ${result.total} procesos consultados. Revisa los resultados y registra la constancia del día.`);
+      setAviso(`Consulta automática: ${result.revisados} de ${result.total} procesos consultados, ${result.registrados} registro${result.registrados === 1 ? '' : 's'} generado${result.registrados === 1 ? '' : 's'}. Puedes corregirlos si algo no coincide.`);
       if (result.errores?.length) setError(result.errores.map((e) => `${e.numero_radicado}: ${e.message}`).join(' · '));
     } catch { setError('No se pudo realizar la consulta automática. Puedes revisar los procesos manualmente en su página.'); }
     finally { setVerificando(false); }
