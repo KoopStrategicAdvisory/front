@@ -27,5 +27,5 @@ export function useUsers() {
     listRoles().then(setRoleOptions).catch(() => {});
   }, [isAdmin]);
 
-  return { ...base, roleOptions };
+  return { ...base, roleOptions, isAdmin };
 }

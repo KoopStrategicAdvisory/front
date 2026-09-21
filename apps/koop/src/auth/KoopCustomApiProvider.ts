@@ -48,7 +48,10 @@ export function normalizeRoles(value: unknown, defaultRole: KoopRole = 'user'): 
 function decodeJwt(token: string): Record<string, unknown> | null {
   try {
     const payload = token.split('.')[1];
-    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    const binario = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    // atob entrega bytes, no texto: sin decodificarlos como UTF-8 los nombres con
+    // tilde o ñ (María, Ñañez) se veían dañados (MARAA) en toda la aplicación.
+    const json = new TextDecoder('utf-8').decode(Uint8Array.from(binario, (c) => c.charCodeAt(0)));
     return JSON.parse(json) as Record<string, unknown>;
   } catch {
     return null;
