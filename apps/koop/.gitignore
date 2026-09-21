@@ -8,3 +8,6 @@ dist/
 # Playwright
 test-results/
 playwright-report/
+
+# Manual: el HTML autocontenido pesa ~6 MB y se regenera; se versiona solo el PDF
+apps/koop/docs/manual/*.html

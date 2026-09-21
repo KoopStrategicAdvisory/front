@@ -115,6 +115,9 @@ importers:
       gh-pages:
         specifier: ^6.1.0
         version: 6.3.0
+      marked:
+        specifier: ^12
+        version: 12.0.2
       typescript:
         specifier: 5.5.4
         version: 5.5.4
@@ -5557,6 +5560,12 @@ packages:
 
   /map-or-similar@1.5.0:
     resolution: {integrity: sha512-0aF7ZmVon1igznGI4VS30yugpduQW3y3GkcgGJOp7d8x8QrizhigUxjI/m2UojsXXto+jLAH3KSz+xOJTiORjg==}
+    dev: true
+
+  /marked@12.0.2:
+    resolution: {integrity: sha512-qXUm7e/YKFoqFPYPa3Ukg9xlI5cyAtGmyEIzMfW//m6kXwCy2Ps9DYf5ioijFKQ8qyuscrHoY04iJGctu2Kg0Q==}
+    engines: {node: '>= 18'}
+    hasBin: true
     dev: true
 
   /math-intrinsics@1.1.0:
