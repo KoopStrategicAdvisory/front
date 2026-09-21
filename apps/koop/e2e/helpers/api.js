@@ -50,3 +50,7 @@ export async function vaciarListaDiaria(request, token) {
     if (!res.ok()) throw new Error(`No se pudo retirar ${item.id_radicado_publico}: ${res.status()}`);
   }
 }
+
+export async function crearCliente(request, token, datos) {
+  return post(request, token, '/clientes', datos);
+}
