@@ -37,3 +37,16 @@ export async function agregarASeguimiento(request, token, { idExpediente, organi
     id_expediente: idExpediente, organismo, modalidad,
   });
 }
+
+// Retira TODOS los procesos de la lista diaria, para pruebas que necesitan
+// partir de una lista conocida (las demás pruebas dejan procesos suyos).
+export async function vaciarListaDiaria(request, token) {
+  const headers = { Authorization: `Bearer ${token}` };
+  const lista = await (await request.get(`${API}/consultas-externas/radicados`, { headers })).json();
+  for (const item of lista.items) {
+    const res = await request.put(`${API}/consultas-externas/radicados/${item.id_radicado_publico}/seguimiento`, {
+      data: { modalidad: null }, headers,
+    });
+    if (!res.ok()) throw new Error(`No se pudo retirar ${item.id_radicado_publico}: ${res.status()}`);
+  }
+}
