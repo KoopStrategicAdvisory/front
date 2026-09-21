@@ -68,3 +68,31 @@ export async function subirDocumento(request, token, { idExpediente, nombre, con
   if (!res.ok()) throw new Error(`Subir documento falló (${res.status()}): ${await res.text()}`);
   return res.json();
 }
+
+// Buzón de correos falsos del servidor de pruebas (nada sale a internet).
+// Devuelve el primer enlace del último correo enviado a esa dirección.
+export async function enlaceDelCorreo(request, para, { intentos = 20 } = {}) {
+  for (let i = 0; i < intentos; i++) {
+    const correos = await (await request.get(`http://localhost:4101/__emails?to=${encodeURIComponent(para)}`)).json();
+    if (correos.length) {
+      const enlace = correos[correos.length - 1].html.match(/href="([^"]+)"/)?.[1];
+      if (enlace) return enlace;
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`No llegó ningún correo a ${para}`);
+}
+
+// Crea una cuenta ya activa (cliente en la firma + registro + verificación),
+// recorriendo la API real como lo haría una persona.
+export async function crearCuentaActiva(request, adminToken, { nombre, email, password, documento }) {
+  await crearCliente(request, adminToken, { nombre, tipo_documento: 'CC', numero_documento: documento, email });
+  const reg = await request.post(`${API}/auth/register`, {
+    data: { nombre, email, password, tipo_documento: 'CC', numero_documento: documento },
+  });
+  if (!reg.ok()) throw new Error(`Registro falló (${reg.status()}): ${await reg.text()}`);
+  const enlace = await enlaceDelCorreo(request, email);
+  const token = new URL(enlace).searchParams.get('token');
+  const ver = await request.get(`${API}/auth/verify-email?token=${token}`);
+  if (!ver.ok()) throw new Error(`Verificación falló (${ver.status()})`);
+}
