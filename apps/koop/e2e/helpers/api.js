@@ -29,3 +29,11 @@ export async function crearClienteConExpediente(request, token, { nombre, expedi
   });
   return { cliente, expediente: exp };
 }
+
+// Deja un expediente ya agregado a la lista diaria (lo que el asistente
+// "Agregar proceso" hace por la interfaz).
+export async function agregarASeguimiento(request, token, { idExpediente, organismo, modalidad = 'manual' }) {
+  return post(request, token, '/consultas-externas/seguimientos', {
+    id_expediente: idExpediente, organismo, modalidad,
+  });
+}
