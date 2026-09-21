@@ -5,3 +5,6 @@ vite-dev*.log
 dist/
 .env
 .env.*
+# Playwright
+test-results/
+playwright-report/

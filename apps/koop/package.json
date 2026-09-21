@@ -11,7 +11,10 @@
         "lint": "eslint \"src/**/*.{js,jsx}\"",
         "predeploy": "pnpm run build",
         "deploy": "gh-pages -d dist",
-        "postbuild": "node scripts/postbuild-404.js"
+        "postbuild": "node scripts/postbuild-404.js",
+        "test:e2e": "playwright test",
+        "test:e2e:ui": "playwright test --ui",
+        "test:e2e:report": "playwright show-report"
     },
     "dependencies": {
         "@repo/auth": "workspace:*",
@@ -28,6 +31,7 @@
         "react-router-dom": "^6.30.1"
     },
     "devDependencies": {
+        "@playwright/test": "^1.63.0",
         "@repo/eslint-config": "workspace:*",
         "@repo/typescript-config": "workspace:*",
         "@types/react": "^19.0.1",
