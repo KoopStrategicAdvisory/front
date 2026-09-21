@@ -1,0 +1,31 @@
+// Atajos que hablan directo con el backend aislado de pruebas (puerto 4100)
+// para preparar datos sin recorrer la interfaz — así cada prueba solo
+// verifica la pantalla que le toca, no todo lo que hay antes.
+export const API = 'http://localhost:4100/api';
+
+export async function tokenDe(request, { email, password }) {
+  const res = await request.post(`${API}/auth/login`, { data: { email, password } });
+  if (!res.ok()) throw new Error(`Login por API falló: ${res.status()}`);
+  return (await res.json()).accessToken;
+}
+
+async function post(request, token, ruta, data) {
+  const res = await request.post(`${API}${ruta}`, { data, headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok()) throw new Error(`POST ${ruta} falló (${res.status()}): ${await res.text()}`);
+  return res.json();
+}
+
+// Crea un cliente con un expediente que ya tiene radicado del despacho, que es
+// lo que hace falta para poder agregarlo a la lista diaria de consultas.
+export async function crearClienteConExpediente(request, token, { nombre, expediente, radicado }) {
+  const cliente = await post(request, token, '/clientes', { nombre });
+  const exp = await post(request, token, '/expedientes', {
+    numero_de_expediente: expediente,
+    numero_radicado_despacho: radicado,
+    id_cliente: cliente.id,
+    id_tipo_proc_subtipo_proc_tipo_pre: 1,
+    contraparte: 'Contraparte de prueba',
+    correo_juzgado: 'juzgado@prueba.test',
+  });
+  return { cliente, expediente: exp };
+}
