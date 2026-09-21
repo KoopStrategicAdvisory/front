@@ -54,3 +54,17 @@ export async function vaciarListaDiaria(request, token) {
 export async function crearCliente(request, token, datos) {
   return post(request, token, '/clientes', datos);
 }
+
+// Sube un documento por la API al S3 falso del servidor de pruebas.
+export async function subirDocumento(request, token, { idExpediente, nombre, contenido, mime = 'text/plain' }) {
+  const res = await request.post(`${API}/documentos`, {
+    headers: { Authorization: `Bearer ${token}` },
+    multipart: {
+      id_expediente: String(idExpediente),
+      id_tipo_documento: '1',
+      file: { name: nombre, mimeType: mime, buffer: Buffer.from(contenido) },
+    },
+  });
+  if (!res.ok()) throw new Error(`Subir documento falló (${res.status()}): ${await res.text()}`);
+  return res.json();
+}
